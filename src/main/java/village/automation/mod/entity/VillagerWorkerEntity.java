@@ -27,7 +27,9 @@ import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.npc.AbstractVillager;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.entity.SmithRecipe;
+import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
+import village.automation.mod.entity.goal.FetchFoodGoal;
 import village.automation.mod.entity.goal.MinerWorkGoal;
 import village.automation.mod.entity.goal.SmithCraftGoal;
 import village.automation.mod.entity.goal.WorkerSleepGoal;
@@ -173,9 +175,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
+        this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
         this.goalSelector.addGoal(2, new MinerWorkGoal(this));
         this.goalSelector.addGoal(2, new SmithCraftGoal(this));
+        this.goalSelector.addGoal(2, new ChefWorkGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
@@ -195,6 +199,9 @@ public class VillagerWorkerEntity extends AbstractVillager {
      * Work goals should gate on this each tick.
      */
     public boolean isTooHungryToWork() { return getFoodLevel() < WORK_FOOD_THRESHOLD; }
+
+    /** Returns {@code true} when the worker's food is low enough to warrant fetching more. */
+    public boolean needsFood() { return getFoodLevel() < EAT_THRESHOLD; }
 
     // ── Server tick ───────────────────────────────────────────────────────────
 

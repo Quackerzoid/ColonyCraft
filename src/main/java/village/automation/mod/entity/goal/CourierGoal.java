@@ -10,6 +10,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import village.automation.mod.ItemRequest;
+import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
@@ -43,7 +44,8 @@ public class CourierGoal extends Goal {
 
     // ── State ─────────────────────────────────────────────────────────────────
     private enum Phase { IDLE, FETCH, DEPOSIT_TO_SMITH, PICKUP_FROM_SMITH, DELIVER_TO_WORKER,
-                         GATHER_FROM_BLOCK, DEPOSIT_GATHERED }
+                         GATHER_FROM_BLOCK, DEPOSIT_GATHERED,
+                         DELIVER_TO_COOKING, PICKUP_FROM_COOKING }
 
     private final CourierEntity courier;
     private Phase   phase           = Phase.IDLE;
@@ -65,6 +67,9 @@ public class CourierGoal extends Goal {
 
     /** Workplace block the courier is currently gathering from (mine/farm). */
     @Nullable private BlockPos targetWorkplacePos = null;
+
+    /** Cooking block the courier is currently delivering wheat to, or picking bread from. */
+    @Nullable private BlockPos targetCookingPos = null;
 
     public CourierGoal(CourierEntity courier) {
         this.courier = courier;
@@ -105,8 +110,10 @@ public class CourierGoal extends Goal {
             case DEPOSIT_TO_SMITH  -> tickDeposit(level);
             case PICKUP_FROM_SMITH -> tickPickup(level);
             case DELIVER_TO_WORKER -> tickDeliver(level);
-            case GATHER_FROM_BLOCK -> tickGatherFromBlock(level);
-            case DEPOSIT_GATHERED  -> tickDepositGathered(level);
+            case GATHER_FROM_BLOCK  -> tickGatherFromBlock(level);
+            case DEPOSIT_GATHERED   -> tickDepositGathered(level);
+            case DELIVER_TO_COOKING -> tickDeliverToCooking(level);
+            case PICKUP_FROM_COOKING -> tickPickupFromCooking(level);
         }
     }
 
@@ -117,63 +124,72 @@ public class CourierGoal extends Goal {
         if (++idleTick < 20) return;
         idleTick = 0;
 
-        // Direct delivery: item already exists in a chest — bypass the smith entirely
+        // ── REQUESTS (highest priority) ──────────────────────────────────────
+        // Direct delivery: requested item already in a chest → fetch and hand to worker
         if (tryStartDirectDelivery(level)) return;
+        // Smith: pick up finished tool, or fetch missing ingredients
+        if (tryStartSmithWork(level)) return;
+        // Chef: deliver wheat when the chef has signalled it needs ingredients
+        if (tryStartChefIngredients(level)) return;
 
+        // ── IDLE TASKS (only when no requests need servicing) ────────────────
+        if (courier.isCarryingAnything()) return;
+        if (tryStartPickupFromCooking(level)) return;
+        tryStartGathering(level);
+    }
+
+    /** Handles all smith-related courier work. Returns true if a task was started. */
+    private boolean tryStartSmithWork(ServerLevel level) {
         VillagerWorkerEntity smith = getSmith(level);
-        if (smith != null) {
-            int smithState = smith.getSmithCraftingState();
+        if (smith == null) return false;
 
-            if (smithState == VillagerWorkerEntity.SMITH_AWAITING) {
-                SmithRecipe recipe = smith.getSmithCurrentRecipe();
-                if (recipe != null) {
-                    List<SmithRecipe.Ingredient> missing = recipe.missing(smith.getSmithInputContainer());
-                    missing = removeSatisfiedByCarried(missing, courier.getCarriedInventory());
+        int state = smith.getSmithCraftingState();
 
-                    if (missing.isEmpty()) {
-                        // All ingredients accounted for — deposit what we're carrying
-                        if (courier.isCarryingAnything()) startDepositToSmith(smith);
-                        return;
-                    }
+        if (state == VillagerWorkerEntity.SMITH_READY) {
+            startPickupFromSmith(smith);
+            return true;
+        }
 
-                    SmithRecipe.Ingredient need = missing.get(0);
-                    BlockPos chestPos = findChestWithItem(level, need);
-                    if (chestPos != null) {
-                        // Found the ingredient in a chest — go fetch it
-                        targetChestPos   = chestPos;
-                        targetIngredient = need;
-                        targetAmount     = need.count;
-                        navigateTo(chestPos);
-                        navTimeout = NAV_TIMEOUT;
-                        phase      = Phase.FETCH;
-                        return;
-                    }
+        if (state == VillagerWorkerEntity.SMITH_AWAITING) {
+            SmithRecipe recipe = smith.getSmithCurrentRecipe();
+            if (recipe == null) return false;
 
-                    // Ingredient not in any chest — if carrying partial items deposit them,
-                    // otherwise fall through to mine/farm gathering below
-                    if (courier.isCarryingAnything()) {
-                        startDepositToSmith(smith);
-                        return;
-                    }
-                    // fall through to gathering
-                }
+            List<SmithRecipe.Ingredient> missing = recipe.missing(smith.getSmithInputContainer());
+            missing = removeSatisfiedByCarried(missing, courier.getCarriedInventory());
 
-            } else if (smithState == VillagerWorkerEntity.SMITH_READY) {
-                startPickupFromSmith(smith);
-                return;
+            if (missing.isEmpty()) {
+                // All ingredients accounted for — deposit what we're carrying if any
+                if (courier.isCarryingAnything()) { startDepositToSmith(smith); return true; }
+                return false; // smith is already satisfied, fall through to idle
             }
+
+            SmithRecipe.Ingredient need = missing.get(0);
+            BlockPos chestPos = findChestWithItem(level, need);
+            if (chestPos != null) {
+                targetChestPos   = chestPos;
+                targetIngredient = need;
+                targetAmount     = need.count;
+                navigateTo(chestPos);
+                navTimeout = NAV_TIMEOUT;
+                phase      = Phase.FETCH;
+                return true;
+            }
+
+            // Ingredient not findable — deposit partial items if any, then idle
+            if (courier.isCarryingAnything()) { startDepositToSmith(smith); return true; }
         }
 
-        // Smith is idle/absent, or AWAITING with nothing fetchable — gather from mine/farm
-        if (!courier.isCarryingAnything()) {
-            tryStartGathering(level);
-        }
+        return false;
     }
 
     // ── FETCH ─────────────────────────────────────────────────────────────────
 
     private void tickFetch(ServerLevel level) {
         if (targetChestPos == null || targetIngredient == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone() && distSqTo(targetChestPos) >= REACH_SQ) {
+            navigateTo(targetChestPos);
+        }
 
         if (distSqTo(targetChestPos) < REACH_SQ) {
             // At the chest — extract items
@@ -185,7 +201,7 @@ public class CourierGoal extends Goal {
                         courier.getCarriedInventory());
 
                 // While here, also grab any other missing smith ingredients from this chest
-                if (!directDelivery) {
+                if (!directDelivery && targetCookingPos == null) {
                     VillagerWorkerEntity smithNow = getSmith(level);
                     if (smithNow != null && smithNow.getSmithCurrentRecipe() != null) {
                         List<SmithRecipe.Ingredient> alsoMissing =
@@ -207,6 +223,14 @@ public class CourierGoal extends Goal {
             targetChestPos   = null;
             targetIngredient = null;
             targetAmount     = 0;
+
+            // Chef delivery path: deposit wheat into the cooking block
+            if (targetCookingPos != null) {
+                navigateTo(targetCookingPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.DELIVER_TO_COOKING;
+                return;
+            }
 
             // Direct delivery path: go straight to the requesting worker
             if (directDelivery) {
@@ -369,6 +393,101 @@ public class CourierGoal extends Goal {
         }
     }
 
+    // ── DELIVER TO COOKING ────────────────────────────────────────────────────
+
+    private void tickDeliverToCooking(ServerLevel level) {
+        if (targetCookingPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetCookingPos);
+        }
+
+        if (distSqTo(targetCookingPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetCookingPos);
+            if (be instanceof CookingBlockEntity cooking) {
+                transferAll(courier.getCarriedInventory(), cooking.getInputContainer());
+            }
+            courier.clearCarried();
+            resetToIdle();
+        }
+    }
+
+    // ── PICKUP FROM COOKING ───────────────────────────────────────────────────
+
+    private void tickPickupFromCooking(ServerLevel level) {
+        if (targetCookingPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetCookingPos);
+        }
+
+        if (distSqTo(targetCookingPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetCookingPos);
+            if (be instanceof CookingBlockEntity cooking) {
+                transferAllFromContainer(cooking.getOutputContainer(), courier.getCarriedInventory());
+            }
+            targetCookingPos = null;
+
+            if (!courier.isCarryingAnything()) { resetToIdle(); return; }
+
+            BlockPos chestPos = findAnyChest(level);
+            if (chestPos == null) { courier.clearCarried(); resetToIdle(); return; }
+
+            targetChestPos = chestPos;
+            navigateTo(chestPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.DEPOSIT_GATHERED;
+        }
+    }
+
+    // ── Chef idle checks ──────────────────────────────────────────────────────
+
+    private boolean tryStartPickupFromCooking(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof CookingBlockEntity cooking)) continue;
+            if (!isContainerEmpty(cooking.getOutputContainer())) {
+                targetCookingPos = workPos;
+                navigateTo(workPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.PICKUP_FROM_COOKING;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Chef has signalled it needs wheat — treat this as a request and fetch it. */
+    private boolean tryStartChefIngredients(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof CookingBlockEntity cooking)) continue;
+            if (!cooking.isNeedsIngredients()) continue;
+
+            SmithRecipe.Ingredient wheatIng = SmithRecipe.exact(Items.WHEAT, 1);
+            BlockPos chestPos = findChestWithItem(level, wheatIng);
+            if (chestPos == null) continue;
+
+            targetCookingPos = workPos;
+            targetChestPos   = chestPos;
+            targetIngredient = wheatIng;
+            targetAmount     = 64;
+            navigateTo(chestPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.FETCH;
+            return true;
+        }
+        return false;
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void startDepositToSmith(VillagerWorkerEntity smith) {
@@ -437,6 +556,7 @@ public class CourierGoal extends Goal {
         directDelivery = false;
         directDeliveryWorkerUUID = null;
         targetWorkplacePos = null;
+        targetCookingPos   = null;
     }
 
     private void navigateTo(BlockPos pos) {
