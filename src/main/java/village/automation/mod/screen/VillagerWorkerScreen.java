@@ -7,8 +7,6 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillagerWorkerMenu;
@@ -196,15 +194,15 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
         VillagerWorkerEntity worker = this.menu.getEntity();
         JobType job = this.menu.getJob();
 
-        // Worker name — centred in the top band of the entity panel
+        // Worker name — centred in the top band of the entity panel.
+        // Use Font.plainSubstrByWidth so the result is guaranteed to fit:
+        // it returns at most (maxW − ellipsisWidth) px of the raw string,
+        // then we append "…" only when something was actually cut.
         String nameStr = (worker != null) ? worker.getDisplayName().getString() : "Worker";
-        // Truncate if it overflows the panel interior (EP_W minus 8 px padding each side)
-        int maxW = EP_W - 10;
-        while (this.font.width(nameStr) > maxW && nameStr.length() > 4) {
-            nameStr = nameStr.substring(0, nameStr.length() - 1);
-        }
+        final int maxW      = EP_W - 10;   // 5 px inner padding each side
+        final int ellipsisW = this.font.width("\u2026");
         if (this.font.width(nameStr) > maxW) {
-            nameStr = nameStr.substring(0, nameStr.length() - 1) + "\u2026"; // ellipsis
+            nameStr = this.font.plainSubstrByWidth(nameStr, maxW - ellipsisW).trim() + "\u2026";
         }
         int nameX = EP_X + (EP_W - this.font.width(nameStr)) / 2;
         g.drawString(this.font,
@@ -227,37 +225,27 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
         super.render(g, mx, my, partialTick);
 
         // ── 3-D entity preview ────────────────────────────────────────────────
-        // Drawn after super.render() so it sits above the slot backgrounds but
-        // the entity panel is entirely outside the slot area, so z-order is safe.
         VillagerWorkerEntity worker = this.menu.getEntity();
         if (worker != null) {
-            // Scissor to the area between the two decorative dividers
-            // (below the name band, above the job badge band).
-            final int pL = this.leftPos + EP_X + 1;
+            // Drawable area: inside the border, between the two decorative dividers.
+            final int pL = this.leftPos + EP_X + 2;
             final int pT = this.topPos  + 19;
-            final int pR = this.leftPos + EP_X + EP_W - 1;
+            final int pR = this.leftPos + EP_X + EP_W - 2;
             final int pB = this.topPos  + MAIN_H - 19;
 
+            // Scissor so the model cannot bleed outside the panel.
             g.enableScissor(pL, pT, pR, pB);
 
-            // Horizontal centre of the panel; vertical position places the entity
-            // at ~65 % of the panel height so the head clears the name divider.
-            float cx = (pL + pR) * 0.5f;
-            float cy = this.topPos + MAIN_H * 0.65f;
-
-            // Mouse position drives ambient lighting for a subtle interactive feel.
-            Vector3f lightDelta = new Vector3f(cx - mx, cy - my, 0f);
-
-            // rotateZ(π)  →  entity faces the viewer
-            // rotateX(-15°)  →  slight downward camera tilt for a natural angle
-            Quaternionf pose     = new Quaternionf().rotateZ((float) Math.PI);
-            Quaternionf camAngle = new Quaternionf().rotateX((float) Math.toRadians(-15.0));
-
-            InventoryScreen.renderEntityInInventory(
-                    g, cx, cy,
+            // renderEntityInInventoryFollowsMouse handles all rotation, scaling,
+            // and mouse-driven head-tracking automatically — no manual quaternion
+            // maths required.  The entity is centred within the supplied bounding
+            // box and the head follows the cursor position (mx, my).
+            InventoryScreen.renderEntityInInventoryFollowsMouse(
+                    g,
+                    pL, pT, pR, pB,
                     ENTITY_SCALE,
-                    lightDelta,
-                    pose, camAngle,
+                    0.0f,     // yOffset — 0 keeps the model vertically centred
+                    mx, my,
                     worker);
 
             g.disableScissor();
