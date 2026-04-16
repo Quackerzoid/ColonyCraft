@@ -1,0 +1,47 @@
+{
+  "itemGroup.colonycraft": "Colony Craft",
+
+  "block.colonycraft.example_block": "Example Block",
+  "item.colonycraft.example_item": "Example Item",
+
+  "block.colonycraft.village_heart": "Village Heart",
+  "block.colonycraft.farm_block": "Farm Block",
+  "block.colonycraft.mine_block": "Mine Block",
+  "block.colonycraft.fishing_block": "Fishing Block",
+  "block.colonycraft.animal_pen": "Animal Pen",
+  "block.colonycraft.cooking_block": "Cooking Block",
+  "block.colonycraft.smithing_block": "Smithing Block",
+  "block.colonycraft.enchanting_block": "Enchanting Block",
+  "block.colonycraft.brewing_block": "Brewing Block",
+  "block.colonycraft.lumbermill": "Lumbermill",
+
+  "container.colonycraft.farm_block": "Farm Block",
+  "container.colonycraft.mine_block": "Mine Block",
+  "container.colonycraft.fishing_block": "Fishing Block",
+  "container.colonycraft.animal_pen": "Animal Pen",
+  "container.colonycraft.cooking_block": "Cooking Block",
+  "container.colonycraft.smithing_block": "Smithing Block",
+  "container.colonycraft.enchanting_block": "Enchanting Block",
+  "container.colonycraft.brewing_block": "Brewing Block",
+  "container.colonycraft.lumbermill": "Lumbermill",
+  "container.colonycraft.village_heart": "Village Heart",
+
+  "item.colonycraft.bundle_of_wheat": "Bundle of Wheat",
+  "item.colonycraft.village_wand": "Village Wand",
+  "item.colonycraft.villager_soul": "Villager Soul",
+  "item.colonycraft.village_upgrade": "Village Upgrade I",
+  "item.colonycraft.village_upgrade_ii": "Village Upgrade II",
+  "item.colonycraft.village_upgrade_iii": "Village Upgrade III",
+
+  "entity.colonycraft.villager_worker": "Villager Worker",
+  "container.colonycraft.villager_worker": "Villager Worker",
+  "item.colonycraft.villager_worker_spawn_egg": "Villager Worker Spawn Egg",
+
+  "colonycraft.configuration.title": "VillageMod Configs",
+  "colonycraft.configuration.section.colonycraft.common.toml": "VillageMod Configs",
+  "colonycraft.configuration.section.colonycraft.common.toml.title": "VillageMod Configs",
+  "colonycraft.configuration.items": "Item List",
+  "colonycraft.configuration.logDirtBlock": "Log Dirt Block",
+  "colonycraft.configuration.magicNumberIntroduction": "Magic Number Text",
+  "colonycraft.configuration.magicNumber": "Magic Number"
+}

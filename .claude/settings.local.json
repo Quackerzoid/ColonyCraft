@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -)",
+      "Bash(python -)",
+      "Bash(dir \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\villagemod\\\\textures\\\\item\\\\\")",
+      "Bash(python -c ':*)",
+      "Bash(dir /s /b \"D:\\\\neoforge mdk mod\\\\build\")",
+      "Bash(findstr \"MapColor\")",
+      "Bash(dir /s /b \"D:\\\\neoforge mdk mod\")",
+      "Bash(findstr \"MapColor.java\")",
+      "Bash(dir /s /b \"%USERPROFILE%\\\\.gradle\\\\caches\")",
+      "Bash(where /r \"C:\\\\Users\\\\kianc\\\\.gradle\" MapColor.java)",
+      "Bash(cmd /c \"where /r C:\\\\Users\\\\kianc\\\\.gradle MapColor.java 2>nul\")",
+      "Bash(cmd /c \"dir /s /b C:\\\\Users\\\\kianc\\\\.gradle\\\\caches 2>nul | findstr /i MapColor | findstr /i .java\")",
+      "Bash(python -c \"from PIL import Image; print\\('PIL ok'\\)\")",
+      "Bash(dir \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\")",
+      "Bash(copy \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\fishing_block.png\" \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\lumbermill.png\")"
+    ]
+  }
+}

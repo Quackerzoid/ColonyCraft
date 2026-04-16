@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " N ",
+    "NSN",
+    " N "
+  ],
+  "key": {
+    "N": { "item": "minecraft:netherite_ingot" },
+    "S": { "item": "colonycraft:villager_soul" }
+  },
+  "result": {
+    "id": "colonycraft:village_upgrade_iii",
+    "count": 1
+  }
+}

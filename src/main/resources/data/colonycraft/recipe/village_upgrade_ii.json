@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " D ",
+    "DSD",
+    " D "
+  ],
+  "key": {
+    "D": { "item": "minecraft:diamond_block" },
+    "S": { "item": "colonycraft:villager_soul" }
+  },
+  "result": {
+    "id": "colonycraft:village_upgrade_ii",
+    "count": 1
+  }
+}

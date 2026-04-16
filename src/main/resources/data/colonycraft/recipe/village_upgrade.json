@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " E ",
+    "ESE",
+    " E "
+  ],
+  "key": {
+    "E": { "item": "minecraft:emerald_block" },
+    "S": { "item": "colonycraft:villager_soul" }
+  },
+  "result": {
+    "id": "colonycraft:village_upgrade",
+    "count": 1
+  }
+}
