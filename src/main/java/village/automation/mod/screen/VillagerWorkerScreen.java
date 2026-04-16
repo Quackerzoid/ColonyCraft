@@ -5,11 +5,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import village.automation.mod.VillageMod;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillagerWorkerMenu;
@@ -17,202 +16,263 @@ import village.automation.mod.menu.VillagerWorkerMenu;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * GUI screen for {@link VillagerWorkerEntity}.
+ *
+ * <p>Layout (relative to panel top-left, main panel only):
+ * <pre>
+ *   y=  0 ─ panel top border
+ *   y=  6   "Tool" label (x=8)  |  "Equipment" label (x=62)
+ *   y= 17   worker 3×3 grid (x=62)
+ *   y= 36   tool slot (x=35)
+ *   y= 71   grid bottom
+ *   y= 79 ─ divider
+ *   y= 82   "Food" label
+ *   y= 88   food bar (width = panel − 16 px margins)
+ *   y= 94 ─ divider
+ *   y= 95   "Inventory" label
+ *   y=102   player main inventory (3 rows × 9)
+ *   y=160   player hotbar
+ *   y=183 ─ panel bottom border
+ * </pre>
+ *
+ * <p>An entity-preview panel of the same height sits to the right of the
+ * main panel, separated by a 2 px gap, showing the worker's 3-D model with
+ * the worker name at the top and job title at the bottom.
+ */
 public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorkerMenu> {
 
-    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(
-            VillageMod.MODID, "textures/gui/villager_worker_gui.png"
-    );
+    // ── Shared colour palette (matches the rest of the mod's screens) ─────────
+    private static final int COL_BG        = 0xFF3B3B3B;
+    private static final int COL_BORDER_LT = 0xFF666666;
+    private static final int COL_BORDER_DK = 0xFF1A1A1A;
+    private static final int COL_DIVIDER   = 0xFF555555;
+    private static final int COL_SLOT_DK   = 0xFF373737;
+    private static final int COL_SLOT_LT   = 0xFF8B8B8B;
 
-    // ── Main panel dimensions (unchanged texture) ─────────────────────────────
-    private static final int MAIN_W = 176;
-    private static final int MAIN_H = 166;
+    // ── Entity-panel colours (slightly darker to read as a distinct viewport) ─
+    private static final int COL_EP_BG     = 0xFF252525;
+    private static final int COL_EP_BDR_LT = 0xFF555555;
+    private static final int COL_EP_BDR_DK = 0xFF111111;
 
-    // ── Food bar layout (relative to GUI top-left) ────────────────────────────
+    // ── Dimensions ────────────────────────────────────────────────────────────
+    /** Width of the main (left) panel. */
+    private static final int MAIN_W = 178;
+    /** Shared height of both panels. */
+    private static final int MAIN_H = 184;
+    /** Gap between main panel and entity panel. */
+    private static final int EP_GAP = 2;
+    /** Width of the entity-preview panel. */
+    private static final int EP_W   = 76;
+    /** X offset of the entity panel's left edge, in GUI-local coordinates. */
+    private static final int EP_X   = MAIN_W + EP_GAP;   // = 180
+
+    // ── Food bar layout (GUI-local coordinates) ───────────────────────────────
     private static final int BAR_X      = 8;
-    private static final int BAR_Y      = 88;   // sits between worker grid (y≤71) and new inventory (y=102)
-    private static final int BAR_WIDTH  = 160;
-    private static final int BAR_HEIGHT = 6;
+    private static final int BAR_Y      = 88;
+    private static final int BAR_W      = MAIN_W - 16;   // 8 px margin each side  = 162
+    private static final int BAR_H      = 6;
 
-    // ── Entity preview panel (relative to GUI top-left) ───────────────────────
-    /** Left edge of the entity panel — 4 px gap after the 176 px main panel. */
-    private static final int EP_X = 180;
-    /** Top of the entity panel — vertically centred with a small top margin. */
-    private static final int EP_Y = 8;
-    /** Width of the entity panel. */
-    private static final int EP_W = 68;
-    /** Height of the entity panel — fills most of the taller GUI. */
-    private static final int EP_H = 168;
+    // ── Key Y values ─────────────────────────────────────────────────────────
+    private static final int DIV_FOOD = 79;   // divider below worker-item area
+    private static final int DIV_INV  = 94;   // divider below food area
 
-    // ── Entity render scale inside the preview panel ──────────────────────────
-    private static final int ENTITY_SCALE = 38;
+    // ── Entity-model render scale ─────────────────────────────────────────────
+    private static final int ENTITY_SCALE = 40;
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     public VillagerWorkerScreen(VillagerWorkerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        // 176 main + 4 gap + 68 entity panel + 4 right margin
-        this.imageWidth  = EP_X + EP_W + 4;  // = 252
-        // 166 original + 18 bottom padding  (slots also shifted down 18 px in the menu)
-        this.imageHeight = MAIN_H + 18;       // = 184
-        // "Inventory" label just above the new player-inventory y=102
-        this.inventoryLabelY = 96;
+        this.imageWidth      = MAIN_W + EP_GAP + EP_W;   // 178 + 2 + 76 = 256
+        this.imageHeight     = MAIN_H;                    // 184
+        this.inventoryLabelY = DIV_INV + 1;              // 95 — just below the divider
     }
 
     // ── Background ────────────────────────────────────────────────────────────
 
     @Override
-    protected void renderBg(GuiGraphics gg, float partialTick, int mouseX, int mouseY) {
-        int x = (this.width  - this.imageWidth)  / 2;
-        int y = (this.height - this.imageHeight) / 2;
+    protected void renderBg(GuiGraphics g, float partialTick, int mx, int my) {
+        final int x = this.leftPos;
+        final int y = this.topPos;
 
-        // ── 1. Original 176×166 main panel texture ────────────────────────────
-        gg.blit(TEXTURE, x, y, 0, 0, MAIN_W, MAIN_H, 256, 256);
+        // ── Main panel ────────────────────────────────────────────────────────
 
-        // ── 2. Extend the main panel bottom by 18 px ──────────────────────────
-        //    Vanilla GUI panel colours:  bg ≈ 0xFFC6C6C6, border ≈ 0xFF373737
-        int extTop = y + MAIN_H - 1;   // start 1 px before texture border so it joins cleanly
-        int extBot = y + imageHeight;
-        // side borders
-        gg.fill(x,           extTop, x + 1,       extBot, 0xFF373737);
-        gg.fill(x + MAIN_W - 1, extTop, x + MAIN_W, extBot, 0xFF373737);
-        // fill
-        gg.fill(x + 1, extTop, x + MAIN_W - 1, extBot - 1, 0xFFC6C6C6);
-        // bottom border
-        gg.fill(x, extBot - 1, x + MAIN_W, extBot, 0xFF373737);
+        // Body fill
+        g.fill(x + 1,          y + 1,          x + MAIN_W - 1, y + MAIN_H - 1, COL_BG);
 
-        // ── 3. Entity preview panel ───────────────────────────────────────────
-        int pL = x + EP_X;
-        int pT = y + EP_Y;
-        int pR = pL + EP_W;
-        int pB = pT + EP_H;
+        // Bevel border — top + left lighter, bottom + right darker
+        g.fill(x,              y,              x + MAIN_W,     y + 1,          COL_BORDER_LT);
+        g.fill(x,              y,              x + 1,          y + MAIN_H,     COL_BORDER_LT);
+        g.fill(x,              y + MAIN_H - 1, x + MAIN_W,     y + MAIN_H,     COL_BORDER_DK);
+        g.fill(x + MAIN_W - 1, y,              x + MAIN_W,     y + MAIN_H,     COL_BORDER_DK);
 
-        // outer near-black frame
-        gg.fill(pL - 1, pT - 1, pR + 1, pB + 1, 0xFF111111);
-        // dark background
-        gg.fill(pL, pT, pR, pB, 0xFF2A2A2A);
-        // inner top+left highlight (gives inset depth)
-        gg.fill(pL,     pT,     pR,     pT + 1, 0xFF555555);
-        gg.fill(pL,     pT,     pL + 1, pB,     0xFF555555);
-        // inner bottom+right shadow
-        gg.fill(pL,     pB - 1, pR,     pB,     0xFF171717);
-        gg.fill(pR - 1, pT,     pR,     pB,     0xFF171717);
+        // Horizontal dividers
+        g.fill(x + 4, y + DIV_FOOD,     x + MAIN_W - 4, y + DIV_FOOD + 1, COL_DIVIDER);
+        g.fill(x + 4, y + DIV_INV,      x + MAIN_W - 4, y + DIV_INV  + 1, COL_DIVIDER);
 
-        // ── 4. Food bar ───────────────────────────────────────────────────────
-        int foodLevel = this.menu.getFoodLevel();
-        int bL = x + BAR_X;
-        int bT = y + BAR_Y;
-        int bR = bL + BAR_WIDTH;
-        int bB = bT + BAR_HEIGHT;
+        // ── Sunken slot backgrounds (for every slot in the menu) ──────────────
+        for (Slot slot : this.menu.slots) {
+            int sx = x + slot.x;
+            int sy = y + slot.y;
+            g.fill(sx - 1, sy - 1, sx + 17, sy + 17, COL_SLOT_DK);
+            g.fill(sx,     sy,     sx + 16, sy + 16, COL_SLOT_LT);
+        }
 
-        gg.fill(bL,     bT,     bR,     bB,     0xFF222222);
-        gg.fill(bL + 1, bT + 1, bR - 1, bB - 1, 0xFF444444);
+        // ── Entity-preview panel ──────────────────────────────────────────────
 
-        float fraction = (float) foodLevel / VillagerWorkerEntity.MAX_FOOD;
-        int   fillPx   = Math.round((BAR_WIDTH - 2) * fraction);
+        final int pL = x + EP_X;
+        final int pT = y;
+        final int pR = pL + EP_W;
+        final int pB = y + MAIN_H;
+
+        // Body fill
+        g.fill(pL + 1, pT + 1, pR - 1, pB - 1, COL_EP_BG);
+
+        // Bevel border
+        g.fill(pL,     pT,     pR,     pT + 1, COL_EP_BDR_LT);
+        g.fill(pL,     pT,     pL + 1, pB,     COL_EP_BDR_LT);
+        g.fill(pL,     pB - 1, pR,     pB,     COL_EP_BDR_DK);
+        g.fill(pR - 1, pT,     pR,     pB,     COL_EP_BDR_DK);
+
+        // Inner decorative rules — below the name, above the job badge
+        g.fill(pL + 4, pT + 17, pR - 4, pT + 18, COL_DIVIDER);
+        g.fill(pL + 4, pB - 18, pR - 4, pB - 17, COL_DIVIDER);
+
+        // ── Food bar ─────────────────────────────────────────────────────────
+
+        final int bL = x + BAR_X;
+        final int bT = y + BAR_Y;
+        final int bR = bL + BAR_W;
+        final int bB = bT + BAR_H;
+
+        // Sunken track
+        g.fill(bL,     bT,     bR,     bB,     COL_SLOT_DK);
+        g.fill(bL + 1, bT + 1, bR - 1, bB - 1, 0xFF1E1E1E);
+
+        // Coloured fill
+        int   food     = this.menu.getFoodLevel();
+        float fraction = (float) food / VillagerWorkerEntity.MAX_FOOD;
+        int   fillPx   = Math.round((BAR_W - 2) * fraction);
         if (fillPx > 0) {
             int fillColor;
             if (fraction > 0.5f) {
-                fillColor = 0xFF44AA22;  // green  — well fed
-            } else if (foodLevel >= VillagerWorkerEntity.WORK_FOOD_THRESHOLD) {
-                fillColor = 0xFFFFAA00;  // amber  — hungry but still working
+                fillColor = 0xFF44AA22;   // green  — well fed
+            } else if (food >= VillagerWorkerEntity.WORK_FOOD_THRESHOLD) {
+                fillColor = 0xFFFFAA00;   // amber  — hungry but working
             } else {
-                fillColor = 0xFFCC2222;  // red    — too hungry to work
+                fillColor = 0xFFCC2222;   // red    — too hungry to work
             }
-            gg.fill(bL + 1, bT + 1, bL + 1 + fillPx, bB - 1, fillColor);
+            g.fill(bL + 1, bT + 1, bL + 1 + fillPx, bB - 1, fillColor);
         }
     }
 
-    // ── Labels (rendered over the background, in GUI-local coordinates) ───────
+    // ── Labels ────────────────────────────────────────────────────────────────
 
     @Override
-    protected void renderLabels(GuiGraphics gg, int mouseX, int mouseY) {
-        // GUI title ("Farmer Alice" etc.) and "Inventory" label drawn by parent.
-        super.renderLabels(gg, mouseX, mouseY);
+    protected void renderLabels(GuiGraphics g, int mx, int my) {
+        // ── Main panel ────────────────────────────────────────────────────────
 
-        // ── Job badge (left panel, below tool slot) ───────────────────────────
-        JobType job = this.menu.getJob();
-        Component badge = Component.literal("[ " + job.getTitle() + " ]")
-                .withStyle(job == JobType.UNEMPLOYED ? ChatFormatting.GRAY : ChatFormatting.GOLD);
-        gg.drawString(this.font, badge, 8, 58, 0xFFFFFF, false);
+        // Section headers above the worker-item slots
+        g.drawString(this.font,
+                Component.literal("Tool").withStyle(ChatFormatting.DARK_GRAY),
+                8, 6, 0xAAAAAA, false);
+        g.drawString(this.font,
+                Component.literal("Equipment").withStyle(ChatFormatting.DARK_GRAY),
+                62, 6, 0xAAAAAA, false);
 
-        // ── Food label ────────────────────────────────────────────────────────
-        gg.drawString(this.font,
-                Component.literal("Food").withStyle(ChatFormatting.DARK_GRAY),
-                BAR_X, BAR_Y - 10, 0xFFFFFF, false);
+        // "Food" caption above the bar
+        g.drawString(this.font,
+                Component.literal("Food").withStyle(ChatFormatting.GRAY),
+                BAR_X, BAR_Y - 10, 0xAAAAAA, false);
 
-        // ── Entity panel name (centred, just inside the top of the panel) ─────
+        // "Inventory" label — standard mod style (dark gray)
+        g.drawString(this.font,
+                Component.translatable("container.inventory"),
+                8, this.inventoryLabelY, 0x404040, false);
+
+        // ── Entity-preview panel ──────────────────────────────────────────────
+
         VillagerWorkerEntity worker = this.menu.getEntity();
-        String label = worker != null ? worker.getDisplayName().getString() : "Worker";
-        // Truncate if wider than the panel interior (EP_W − 6 px padding)
-        int maxW = EP_W - 6;
-        while (this.font.width(label) > maxW && label.length() > 4) {
-            label = label.substring(0, label.length() - 1);
-        }
-        if (this.font.width(label) > maxW) label = label.substring(0, label.length() - 1) + "…";
+        JobType job = this.menu.getJob();
 
-        int labelX = EP_X + (EP_W - this.font.width(label)) / 2;
-        gg.drawString(this.font,
-                Component.literal(label).withStyle(ChatFormatting.WHITE),
-                labelX, EP_Y + 3,
-                0xFFFFFF, false);
+        // Worker name — centred in the top band of the entity panel
+        String nameStr = (worker != null) ? worker.getDisplayName().getString() : "Worker";
+        // Truncate if it overflows the panel interior (EP_W minus 8 px padding each side)
+        int maxW = EP_W - 10;
+        while (this.font.width(nameStr) > maxW && nameStr.length() > 4) {
+            nameStr = nameStr.substring(0, nameStr.length() - 1);
+        }
+        if (this.font.width(nameStr) > maxW) {
+            nameStr = nameStr.substring(0, nameStr.length() - 1) + "\u2026"; // ellipsis
+        }
+        int nameX = EP_X + (EP_W - this.font.width(nameStr)) / 2;
+        g.drawString(this.font,
+                Component.literal(nameStr).withStyle(ChatFormatting.WHITE),
+                nameX, 5, 0xFFFFFF, false);
+
+        // Job badge — centred in the bottom band of the entity panel
+        Component badge = Component.literal(job.getTitle())
+                .withStyle(job == JobType.UNEMPLOYED ? ChatFormatting.DARK_GRAY : ChatFormatting.GOLD);
+        int badgeX = EP_X + (EP_W - this.font.width(badge.getString())) / 2;
+        g.drawString(this.font, badge, badgeX, MAIN_H - 13, 0xFFFFFF, false);
     }
 
-    // ── Full render (entity preview + tooltips on top of everything) ──────────
+    // ── Full render ───────────────────────────────────────────────────────────
 
     @Override
-    public void render(GuiGraphics gg, int mouseX, int mouseY, float partialTick) {
-        // Draw background (texture, entity-panel fill, food bar).
-        super.render(gg, mouseX, mouseY, partialTick);
+    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+        // Standard mod order: dim background → bg fills → slots/items → overlays.
+        this.renderBackground(g, mx, my, partialTick);
+        super.render(g, mx, my, partialTick);
 
-        // ── Entity preview ────────────────────────────────────────────────────
+        // ── 3-D entity preview ────────────────────────────────────────────────
+        // Drawn after super.render() so it sits above the slot backgrounds but
+        // the entity panel is entirely outside the slot area, so z-order is safe.
         VillagerWorkerEntity worker = this.menu.getEntity();
         if (worker != null) {
-            int guiLeft = (this.width  - this.imageWidth)  / 2;
-            int guiTop  = (this.height - this.imageHeight) / 2;
+            // Scissor to the area between the two decorative dividers
+            // (below the name band, above the job badge band).
+            final int pL = this.leftPos + EP_X + 1;
+            final int pT = this.topPos  + 19;
+            final int pR = this.leftPos + EP_X + EP_W - 1;
+            final int pB = this.topPos  + MAIN_H - 19;
 
-            int pL = guiLeft + EP_X;
-            int pT = guiTop  + EP_Y;
-            int pR = pL + EP_W;
-            int pB = pT + EP_H;
+            g.enableScissor(pL, pT, pR, pB);
 
-            // Clip so the model never bleeds outside the panel border.
-            gg.enableScissor(pL + 1, pT + 12, pR - 1, pB - 1);
-
-            // Render centre — 72 % down the panel so the head clears the name label.
+            // Horizontal centre of the panel; vertical position places the entity
+            // at ~65 % of the panel height so the head clears the name divider.
             float cx = (pL + pR) * 0.5f;
-            float cy = pT + EP_H * 0.72f;
+            float cy = this.topPos + MAIN_H * 0.65f;
 
-            // The mouse offset drives the ambient lighting direction, giving a
-            // subtle "light tracks the cursor" feel without mutating entity state.
-            Vector3f lightDelta = new Vector3f(cx - mouseX, cy - mouseY, 0f);
+            // Mouse position drives ambient lighting for a subtle interactive feel.
+            Vector3f lightDelta = new Vector3f(cx - mx, cy - my, 0f);
 
-            // rotateZ(π) flips the entity to face the viewer.
-            Quaternionf pose = new Quaternionf().rotateZ((float) Math.PI);
-
-            // A 15° upward camera tilt gives a natural three-quarter view.
+            // rotateZ(π)  →  entity faces the viewer
+            // rotateX(-15°)  →  slight downward camera tilt for a natural angle
+            Quaternionf pose     = new Quaternionf().rotateZ((float) Math.PI);
             Quaternionf camAngle = new Quaternionf().rotateX((float) Math.toRadians(-15.0));
 
             InventoryScreen.renderEntityInInventory(
-                    gg, cx, cy,
+                    g, cx, cy,
                     ENTITY_SCALE,
                     lightDelta,
                     pose, camAngle,
                     worker);
 
-            gg.disableScissor();
+            g.disableScissor();
         }
 
         // ── Slot tooltips ─────────────────────────────────────────────────────
-        this.renderTooltip(gg, mouseX, mouseY);
+        this.renderTooltip(g, mx, my);
 
         // ── Food bar tooltip ──────────────────────────────────────────────────
-        int guiLeft = (this.width  - this.imageWidth)  / 2;
-        int guiTop  = (this.height - this.imageHeight) / 2;
+        final int bL = this.leftPos + BAR_X;
+        final int bT = this.topPos  + BAR_Y;
+        final int bR = bL + BAR_W;
+        final int bB = bT + BAR_H;
 
-        int bL = guiLeft + BAR_X;
-        int bT = guiTop  + BAR_Y;
-        int bR = bL + BAR_WIDTH;
-        int bB = bT + BAR_HEIGHT;
-
-        if (mouseX >= bL && mouseX < bR && mouseY >= bT && mouseY < bB) {
+        if (mx >= bL && mx < bR && my >= bT && my < bB) {
             int food = this.menu.getFoodLevel();
             List<Component> lines = new ArrayList<>();
             lines.add(Component.literal("Food: ")
@@ -224,7 +284,7 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
             } else if (food < VillagerWorkerEntity.MAX_FOOD / 2) {
                 lines.add(Component.literal("Getting hungry\u2026").withStyle(ChatFormatting.YELLOW));
             }
-            gg.renderComponentTooltip(this.font, lines, mouseX, mouseY);
+            g.renderComponentTooltip(this.font, lines, mx, my);
         }
     }
 }
