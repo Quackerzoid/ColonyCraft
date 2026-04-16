@@ -20,12 +20,15 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import village.automation.mod.ItemRequest;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillageHeartMenu;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -63,11 +66,26 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     // UUIDs of workers spawned by this heart (server-side only)
     private final Set<UUID> workerUUIDs = new HashSet<>();
 
+    // UUIDs of courier golems linked to this heart (server-side only)
+    private final Set<UUID> courierUUIDs = new HashSet<>();
+
     // Positions of all profession workplace blocks linked to this heart (server-side only)
     private final Set<BlockPos> linkedWorkplaces = new HashSet<>();
 
     // Cooldown between job-assignment checks (runs every 20 ticks / 1 second)
     private int jobCheckCooldown = 0;
+
+    // Pending item requests from workers — one entry per worker UUID
+    private final List<ItemRequest> pendingRequests = new ArrayList<>();
+    // Incremented whenever the request list changes so menus know to re-sync
+    private int requestsVersion = 0;
+
+    // ── Chest registry ────────────────────────────────────────────────────────
+    // All Container block entities (chests, barrels) within village territory.
+    // Refreshed every CHEST_SCAN_INTERVAL ticks.
+    private final Set<BlockPos> registeredChests = new HashSet<>();
+    private int chestScanCooldown = 0;
+    private static final int CHEST_SCAN_INTERVAL = 400;  // 20 s
 
     // Computed server-side each tick; synced to client via ContainerData
     private int syncedWorkerCount = 0;
@@ -107,6 +125,7 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         if (!(level instanceof ServerLevel serverLevel)) return;
 
         // ── Worker count + cap sync ──────────────────────────────────────────
+        be.cleanDeadCouriers(serverLevel);
         int liveCount = be.countLiveWorkers(serverLevel);
         int cap       = be.getWorkerCap();
         be.syncedWorkerCount = liveCount;
@@ -155,9 +174,31 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             be.assignJobs(serverLevel);
             be.jobCheckCooldown = 20;
         }
+
+        // ── Chest scan (every 400 ticks) ──────────────────────────────────────
+        if (be.chestScanCooldown > 0) {
+            be.chestScanCooldown--;
+        } else {
+            be.scanForChests(serverLevel);
+            be.chestScanCooldown = CHEST_SCAN_INTERVAL;
+        }
     }
 
     // ── Worker tracking ───────────────────────────────────────────────────────
+
+    /** Registers a courier golem as belonging to this heart's colony. */
+    public void registerCourier(UUID uuid) {
+        courierUUIDs.add(uuid);
+        setChanged();
+    }
+
+    /** Removes dead/unloaded courier UUIDs. */
+    private void cleanDeadCouriers(ServerLevel serverLevel) {
+        courierUUIDs.removeIf(uuid -> {
+            var entity = serverLevel.getEntity(uuid);
+            return entity == null || !entity.isAlive();
+        });
+    }
 
     /** Removes dead/missing UUIDs and returns the live count. */
     private int countLiveWorkers(ServerLevel serverLevel) {
@@ -326,6 +367,96 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         }
     }
 
+    // ── Chest scanning ────────────────────────────────────────────────────────
+
+    /**
+     * Scans all loaded chunks within the village territory and populates
+     * {@link #registeredChests} with every {@code ChestBlockEntity} or
+     * {@code BarrelBlockEntity} found.  Uses the same chunk-map approach as
+     * {@link #findClaimingHeart} to avoid per-block iteration.
+     */
+    private void scanForChests(ServerLevel level) {
+        registeredChests.clear();
+        int radius = getRadius();
+        BlockPos heartPos = getBlockPos();
+        int cr  = (radius >> 4) + 1;
+        int ocx = heartPos.getX() >> 4;
+        int ocz = heartPos.getZ() >> 4;
+
+        for (int cx = -cr; cx <= cr; cx++) {
+            for (int cz = -cr; cz <= cr; cz++) {
+                if (!level.hasChunk(ocx + cx, ocz + cz)) continue;
+                LevelChunk chunk = level.getChunk(ocx + cx, ocz + cz);
+                for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
+                    BlockPos bePos = entry.getKey();
+                    BlockEntity be = entry.getValue();
+                    if (!(be instanceof net.minecraft.world.Container)) continue;
+                    if (be instanceof VillageHeartBlockEntity) continue;  // don't list ourselves
+                    if (heartPos.distSqr(bePos) <= (double)(radius * radius)) {
+                        registeredChests.add(bePos.immutable());
+                    }
+                }
+            }
+        }
+        setChanged();
+    }
+
+    public Set<BlockPos> getRegisteredChests() {
+        return java.util.Collections.unmodifiableSet(registeredChests);
+    }
+
+    public Set<BlockPos> getLinkedWorkplaces() {
+        return java.util.Collections.unmodifiableSet(linkedWorkplaces);
+    }
+
+    // ── Blacksmith lookup ─────────────────────────────────────────────────────
+
+    /**
+     * Returns the live BLACKSMITH worker belonging to this heart, or {@code null}.
+     */
+    @javax.annotation.Nullable
+    public VillagerWorkerEntity getBlacksmithWorker(ServerLevel level) {
+        for (UUID uuid : workerUUIDs) {
+            Entity e = level.getEntity(uuid);
+            if (e instanceof VillagerWorkerEntity w && w.isAlive()
+                    && w.getJob() == JobType.BLACKSMITH) return w;
+        }
+        return null;
+    }
+
+    // ── Item requests ─────────────────────────────────────────────────────────
+
+    /**
+     * Adds a request from a worker.  Only one active request per worker is
+     * kept — if the same worker already has a request it is replaced so the
+     * item name stays current (e.g. hoe broke and they now need a pickaxe after
+     * a job change).
+     */
+    public void addRequest(ItemRequest req) {
+        pendingRequests.removeIf(r -> r.getWorkerUUID().equals(req.getWorkerUUID()));
+        pendingRequests.add(req);
+        requestsVersion++;
+        setChanged();
+    }
+
+    /**
+     * Removes any pending request from the given worker (called when the
+     * worker receives the item or is reassigned).
+     */
+    public void resolveRequest(UUID workerUUID) {
+        if (pendingRequests.removeIf(r -> r.getWorkerUUID().equals(workerUUID))) {
+            requestsVersion++;
+            setChanged();
+        }
+    }
+
+    public List<ItemRequest> getPendingRequests() {
+        return Collections.unmodifiableList(pendingRequests);
+    }
+
+    /** Monotonically increasing counter — menus compare against this to detect changes. */
+    public int getRequestsVersion() { return requestsVersion; }
+
     // ── Accessors ─────────────────────────────────────────────────────────────
 
     public String getVillageName() { return villageName; }
@@ -381,6 +512,15 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         }
         tag.put("WorkerUUIDs", uuidList);
 
+        // Courier UUIDs
+        ListTag courierList = new ListTag();
+        for (UUID uuid : this.courierUUIDs) {
+            CompoundTag t = new CompoundTag();
+            t.putUUID("UUID", uuid);
+            courierList.add(t);
+        }
+        tag.put("CourierUUIDs", courierList);
+
         // Linked workplace positions (all profession blocks)
         ListTag workplaceList = new ListTag();
         for (BlockPos workPos : this.linkedWorkplaces) {
@@ -391,6 +531,22 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             workplaceList.add(t);
         }
         tag.put("LinkedWorkplaces", workplaceList);
+
+        // Pending item requests
+        ListTag requestList = new ListTag();
+        for (ItemRequest req : this.pendingRequests) {
+            requestList.add(req.save());
+        }
+        tag.put("PendingRequests", requestList);
+
+        // Registered chests (persist so the courier can start working immediately on reload)
+        ListTag chestList = new ListTag();
+        for (BlockPos cp : this.registeredChests) {
+            CompoundTag ct = new CompoundTag();
+            ct.putInt("X", cp.getX()); ct.putInt("Y", cp.getY()); ct.putInt("Z", cp.getZ());
+            chestList.add(ct);
+        }
+        tag.put("RegisteredChests", chestList);
     }
 
     @Override
@@ -421,6 +577,12 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             this.workerUUIDs.add(uuidList.getCompound(i).getUUID("UUID"));
         }
 
+        this.courierUUIDs.clear();
+        ListTag courierList = tag.getList("CourierUUIDs", Tag.TAG_COMPOUND);
+        for (int i = 0; i < courierList.size(); i++) {
+            this.courierUUIDs.add(courierList.getCompound(i).getUUID("UUID"));
+        }
+
         this.linkedWorkplaces.clear();
         // Load new key; also migrate old "LinkedFarmBlocks" key from pre-refactor saves
         String workplaceKey = tag.contains("LinkedWorkplaces") ? "LinkedWorkplaces" : "LinkedFarmBlocks";
@@ -428,6 +590,24 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         for (int i = 0; i < workplaceList.size(); i++) {
             CompoundTag t = workplaceList.getCompound(i);
             this.linkedWorkplaces.add(new BlockPos(t.getInt("X"), t.getInt("Y"), t.getInt("Z")));
+        }
+
+        this.pendingRequests.clear();
+        ListTag requestList = tag.getList("PendingRequests", Tag.TAG_COMPOUND);
+        for (int i = 0; i < requestList.size(); i++) {
+            try {
+                this.pendingRequests.add(ItemRequest.load(requestList.getCompound(i)));
+            } catch (Exception ignored) {
+                // Corrupt or unknown item — skip silently
+            }
+        }
+
+        // Registered chests
+        this.registeredChests.clear();
+        ListTag chestList = tag.getList("RegisteredChests", Tag.TAG_COMPOUND);
+        for (int i = 0; i < chestList.size(); i++) {
+            CompoundTag ct = chestList.getCompound(i);
+            this.registeredChests.add(new BlockPos(ct.getInt("X"), ct.getInt("Y"), ct.getInt("Z")));
         }
     }
 }

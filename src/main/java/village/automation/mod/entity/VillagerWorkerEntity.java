@@ -25,8 +25,11 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.npc.AbstractVillager;
+import village.automation.mod.ItemRequest;
+import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
 import village.automation.mod.entity.goal.MinerWorkGoal;
+import village.automation.mod.entity.goal.SmithCraftGoal;
 import village.automation.mod.entity.goal.WorkerSleepGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -114,6 +117,20 @@ public class VillagerWorkerEntity extends AbstractVillager {
         return NAMES.get(random.nextInt(NAMES.size()));
     }
 
+    // ── Smith crafting states ─────────────────────────────────────────────────
+    public static final int SMITH_IDLE     = 0;
+    public static final int SMITH_AWAITING = 1;
+    public static final int SMITH_CRAFTING = 2;
+    public static final int SMITH_READY    = 3;
+
+    // ── Smith state (active when job == BLACKSMITH) ───────────────────────────
+    private final SimpleContainer smithInputContainer  = new SimpleContainer(9);
+    private final SimpleContainer smithOutputContainer = new SimpleContainer(1);
+    private int       smithCraftingState  = SMITH_IDLE;
+    private int       smithCraftingTimer  = 0;
+    @Nullable private ItemRequest smithCurrentRequest = null;
+    @Nullable private SmithRecipe smithCurrentRecipe  = null;
+
     // ── Inventory ─────────────────────────────────────────────────────────────
     private final SimpleContainer workerInventory = new SimpleContainer(9);
     private final SimpleContainer toolContainer   = new SimpleContainer(1);
@@ -155,9 +172,10 @@ public class VillagerWorkerEntity extends AbstractVillager {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new WorkerSleepGoal(this));  // preempts everything at night
-        this.goalSelector.addGoal(2, new FarmerWorkGoal(this));   // dormant unless job == FARMER
-        this.goalSelector.addGoal(2, new MinerWorkGoal(this));    // dormant unless job == MINER
+        this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
+        this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
+        this.goalSelector.addGoal(2, new MinerWorkGoal(this));
+        this.goalSelector.addGoal(2, new SmithCraftGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
@@ -353,8 +371,21 @@ public class VillagerWorkerEntity extends AbstractVillager {
 
     // ── Accessors ─────────────────────────────────────────────────────────────
 
-    public SimpleContainer getWorkerInventory() { return workerInventory; }
-    public SimpleContainer getToolContainer()   { return toolContainer;   }
+    public SimpleContainer getWorkerInventory()  { return workerInventory;  }
+    public SimpleContainer getToolContainer()    { return toolContainer;    }
+
+    // ── Smith API ─────────────────────────────────────────────────────────────
+    public SimpleContainer getSmithInputContainer()  { return smithInputContainer;  }
+    public SimpleContainer getSmithOutputContainer() { return smithOutputContainer; }
+    public int  getSmithCraftingState()  { return smithCraftingState;  }
+    public int  getSmithCraftingTimer()  { return smithCraftingTimer;  }
+    @Nullable public ItemRequest getSmithCurrentRequest() { return smithCurrentRequest; }
+    @Nullable public SmithRecipe getSmithCurrentRecipe()  { return smithCurrentRecipe;  }
+    public void setSmithCraftingState(int s)          { smithCraftingState  = s; }
+    public void setSmithCraftingTimer(int t)          { smithCraftingTimer  = t; }
+    public void setSmithCurrentRequest(ItemRequest r) { smithCurrentRequest = r; }
+    public void setSmithCurrentRecipe(SmithRecipe r)  { smithCurrentRecipe  = r; }
+    public void tickSmithCraftingTimer() { if (smithCraftingTimer > 0) smithCraftingTimer--; }
 
     // ── NBT save / load ──────────────────────────────────────────────────────
 
@@ -392,6 +423,25 @@ public class VillagerWorkerEntity extends AbstractVillager {
         // Food
         tag.putInt("FoodLevel",     getFoodLevel());
         tag.putInt("FoodDrainTimer", foodDrainTimer);
+
+        // Smith state
+        tag.putInt("SmithCraftingState", smithCraftingState);
+        tag.putInt("SmithCraftingTimer", smithCraftingTimer);
+        if (smithCurrentRequest != null) tag.put("SmithRequest", smithCurrentRequest.save());
+        if (smithCurrentRecipe  != null) tag.putString("SmithRecipeResult",
+                net.minecraft.core.registries.BuiltInRegistries.ITEM
+                        .getKey(smithCurrentRecipe.result).toString());
+        ListTag smithInputTag = new ListTag();
+        for (int i = 0; i < smithInputContainer.getContainerSize(); i++) {
+            ItemStack s = smithInputContainer.getItem(i);
+            if (!s.isEmpty()) {
+                CompoundTag st = new CompoundTag(); st.putByte("Slot", (byte) i);
+                st.put("Item", s.save(this.registryAccess())); smithInputTag.add(st);
+            }
+        }
+        tag.put("SmithInput", smithInputTag);
+        ItemStack smithOut = smithOutputContainer.getItem(0);
+        if (!smithOut.isEmpty()) tag.put("SmithOutput", smithOut.save(this.registryAccess()));
     }
 
     @Override
@@ -436,6 +486,32 @@ public class VillagerWorkerEntity extends AbstractVillager {
         // Food
         setFoodLevel(tag.contains("FoodLevel") ? tag.getInt("FoodLevel") : MAX_FOOD);
         foodDrainTimer = tag.contains("FoodDrainTimer") ? tag.getInt("FoodDrainTimer") : FOOD_DRAIN_INTERVAL;
+
+        // Smith state
+        smithCraftingState = tag.getInt("SmithCraftingState");
+        smithCraftingTimer = tag.getInt("SmithCraftingTimer");
+        smithCurrentRequest = tag.contains("SmithRequest")
+                ? ItemRequest.load(tag.getCompound("SmithRequest")) : null;
+        if (tag.contains("SmithRecipeResult")) {
+            net.minecraft.resources.ResourceLocation rl =
+                    net.minecraft.resources.ResourceLocation.parse(tag.getString("SmithRecipeResult"));
+            smithCurrentRecipe = SmithRecipe.findFor(
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(rl)
+                            .orElse(net.minecraft.world.item.Items.AIR)).orElse(null);
+        }
+        smithInputContainer.clearContent();
+        ListTag smithInputTag = tag.getList("SmithInput", net.minecraft.nbt.Tag.TAG_COMPOUND);
+        for (int i = 0; i < smithInputTag.size(); i++) {
+            CompoundTag st = smithInputTag.getCompound(i);
+            int slot = st.getByte("Slot") & 255;
+            if (slot < smithInputContainer.getContainerSize())
+                smithInputContainer.setItem(slot,
+                        ItemStack.parseOptional(this.registryAccess(), st.getCompound("Item")));
+        }
+        smithOutputContainer.clearContent();
+        if (tag.contains("SmithOutput"))
+            smithOutputContainer.setItem(0,
+                    ItemStack.parseOptional(this.registryAccess(), tag.getCompound("SmithOutput")));
     }
 
     // ── Required Merchant / AgeableMob stubs ─────────────────────────────────

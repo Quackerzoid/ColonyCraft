@@ -10,8 +10,12 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.client.model.geom.ModelLayerLocation;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.MobSpawnType;
+import java.util.Optional;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.inventory.MenuType;
@@ -22,8 +26,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -67,6 +71,7 @@ import village.automation.mod.blockentity.LumbermillBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
 import village.automation.mod.blockentity.SmithingBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
+import village.automation.mod.entity.CourierEntity;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.item.VillageWandItem;
 import village.automation.mod.loot.VillagerSoulLootModifier;
@@ -82,6 +87,7 @@ import village.automation.mod.menu.SmithingBlockMenu;
 import village.automation.mod.menu.VillageHeartMenu;
 import village.automation.mod.menu.VillagerWorkerMenu;
 import village.automation.mod.network.SetVillageNamePacket;
+import village.automation.mod.network.SyncRequestsPacket;
 
 @Mod(VillageMod.MODID)
 public class VillageMod {
@@ -272,6 +278,25 @@ public class VillageMod {
     public static final DeferredHolder<MapCodec<? extends IGlobalLootModifier>, MapCodec<VillagerSoulLootModifier>> VILLAGER_SOUL_GLM =
             GLM_SERIALIZERS.register("villager_soul_drop", () -> VillagerSoulLootModifier.CODEC);
 
+    // ── Soul Pumpkin ─────────────────────────────────────────────────────────
+    public static final DeferredBlock<Block> SOUL_PUMPKIN =
+            BLOCKS.register("soul_pumpkin",
+                    () -> new Block(BlockBehaviour.Properties.ofFullCopy(Blocks.CARVED_PUMPKIN)));
+    public static final DeferredItem<BlockItem> SOUL_PUMPKIN_ITEM =
+            ITEMS.registerSimpleBlockItem("soul_pumpkin", SOUL_PUMPKIN);
+
+    // ── Courier entity ───────────────────────────────────────────────────────
+    public static final DeferredHolder<EntityType<?>, EntityType<CourierEntity>> COURIER =
+            ENTITY_TYPES.register("courier",
+                    () -> EntityType.Builder.<CourierEntity>of(CourierEntity::new, MobCategory.MISC)
+                            .sized(0.6f, 1.4f)
+                            .clientTrackingRange(10)
+                            .build(MODID + ":courier"));
+
+    // ── Courier model layer ──────────────────────────────────────────────────
+    public static final ModelLayerLocation COURIER_LAYER =
+            new ModelLayerLocation(ResourceLocation.fromNamespaceAndPath(MODID, "courier"), "main");
+
     // ── Villager Worker entity ───────────────────────────────────────────────
     public static final DeferredHolder<EntityType<?>, EntityType<VillagerWorkerEntity>> VILLAGER_WORKER =
             ENTITY_TYPES.register("villager_worker",
@@ -312,6 +337,7 @@ public class VillageMod {
                         output.accept(VILLAGE_UPGRADE.get());
                         output.accept(VILLAGE_UPGRADE_II.get());
                         output.accept(VILLAGE_UPGRADE_III.get());
+                        output.accept(SOUL_PUMPKIN_ITEM.get());
                         output.accept(VILLAGER_WORKER_SPAWN_EGG.get());
                         output.accept(EXAMPLE_ITEM.get());
                         output.accept(EXAMPLE_BLOCK_ITEM.get());
@@ -345,6 +371,10 @@ public class VillageMod {
                 SetVillageNamePacket.TYPE,
                 SetVillageNamePacket.STREAM_CODEC,
                 SetVillageNamePacket::handle);
+        registrar.playToClient(
+                SyncRequestsPacket.TYPE,
+                SyncRequestsPacket.STREAM_CODEC,
+                SyncRequestsPacket::handle);
     }
 
     /**
@@ -382,6 +412,7 @@ public class VillageMod {
 
     private static void onEntityAttributes(EntityAttributeCreationEvent event) {
         event.put(VILLAGER_WORKER.get(), VillagerWorkerEntity.createAttributes().build());
+        event.put(COURIER.get(), CourierEntity.createAttributes().build());
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
@@ -417,19 +448,58 @@ public class VillageMod {
      */
     @SubscribeEvent
     public void onEntityPlaceBlock(BlockEvent.EntityPlaceEvent event) {
-        if (!event.getState().is(VILLAGE_HEART.get())) return;
         if (!(event.getLevel() instanceof net.minecraft.server.level.ServerLevel serverLevel)) return;
-
         BlockPos pos = event.getPos();
-        VillageHeartBlockEntity.findClaimingHeart(serverLevel, pos, pos).ifPresent(existingHeart -> {
-            event.setCanceled(true);
-            if (event.getEntity() instanceof Player player) {
-                player.displayClientMessage(
-                        net.minecraft.network.chat.Component
-                                .literal("Too close to an existing Village Heart!")
-                                .withStyle(ChatFormatting.RED),
-                        true);   // true = action bar (above hotbar)
+
+        // Prevent a Village Heart being placed inside another heart's territory
+        if (event.getState().is(VILLAGE_HEART.get())) {
+            VillageHeartBlockEntity.findClaimingHeart(serverLevel, pos, pos).ifPresent(existingHeart -> {
+                event.setCanceled(true);
+                if (event.getEntity() instanceof Player player) {
+                    player.displayClientMessage(
+                            net.minecraft.network.chat.Component
+                                    .literal("Too close to an existing Village Heart!")
+                                    .withStyle(ChatFormatting.RED),
+                            true);
+                }
+            });
+            return;
+        }
+
+        // Soul pumpkin placed on top of a copper block → spawn courier
+        if (event.getState().is(SOUL_PUMPKIN.get())) {
+            BlockPos copperPos = pos.below();
+            if (serverLevel.getBlockState(copperPos).is(Blocks.COPPER_BLOCK)) {
+                Optional<BlockPos> heartPosOpt =
+                        VillageHeartBlockEntity.findClaimingHeart(serverLevel, copperPos, null);
+                if (heartPosOpt.isEmpty()) {
+                    event.setCanceled(true);
+                    if (event.getEntity() instanceof Player player) {
+                        player.displayClientMessage(
+                                net.minecraft.network.chat.Component
+                                        .literal("Must be within a Village Heart's territory!")
+                                        .withStyle(ChatFormatting.RED),
+                                true);
+                    }
+                    return;
+                }
+                serverLevel.removeBlock(pos, false);
+                serverLevel.removeBlock(copperPos, false);
+                CourierEntity courier = new CourierEntity(COURIER.get(), serverLevel);
+                courier.moveTo(copperPos.getX() + 0.5, copperPos.getY() + 0.5,
+                        copperPos.getZ() + 0.5, serverLevel.getRandom().nextFloat() * 360f, 0f);
+                courier.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(copperPos),
+                        MobSpawnType.MOB_SUMMONED, null);
+                BlockPos heartPos = heartPosOpt.get();
+                courier.setLinkedHeartPos(heartPos);
+                serverLevel.addFreshEntity(courier);
+                net.minecraft.world.level.block.entity.BlockEntity heartBe =
+                        serverLevel.getBlockEntity(heartPos);
+                if (heartBe instanceof VillageHeartBlockEntity heartBE) {
+                    heartBE.registerCourier(courier.getUUID());
+                }
+                event.setCanceled(true);
             }
-        });
+        }
     }
 }

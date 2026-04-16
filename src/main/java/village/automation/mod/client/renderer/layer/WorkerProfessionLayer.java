@@ -30,6 +30,9 @@ public class WorkerProfessionLayer
         extends RenderLayer<VillagerWorkerEntity, VillagerModel<VillagerWorkerEntity>> {
 
     // ── Biome-type textures ───────────────────────────────────────────────────
+    private static final ResourceLocation TYPE_PLAINS =
+            ResourceLocation.withDefaultNamespace("textures/entity/villager/type/plains.png");
+
     private static final ResourceLocation TYPE_SAVANNA =
             ResourceLocation.withDefaultNamespace("textures/entity/villager/type/savanna.png");
 
@@ -48,6 +51,9 @@ public class WorkerProfessionLayer
 
     private static final ResourceLocation PROF_SHEPHERD =
             ResourceLocation.withDefaultNamespace("textures/entity/villager/profession/shepherd.png");
+
+    private static final ResourceLocation PROF_TOOLSMITH =
+            ResourceLocation.withDefaultNamespace("textures/entity/villager/profession/toolsmith.png");
 
     public WorkerProfessionLayer(
             RenderLayerParent<VillagerWorkerEntity, VillagerModel<VillagerWorkerEntity>> parent) {
@@ -78,7 +84,10 @@ public class WorkerProfessionLayer
                 overlay(poseStack, bufferSource, packedLight, entity, TYPE_JUNGLE);
                 overlay(poseStack, bufferSource, packedLight, entity, PROF_SHEPHERD);
             }
-            // Future jobs: add cases here following the same pattern
+            case BLACKSMITH -> {
+                overlay(poseStack, bufferSource, packedLight, entity, TYPE_PLAINS);
+                overlay(poseStack, bufferSource, packedLight, entity, PROF_TOOLSMITH);
+            }
             default -> { /* no overlay yet */ }
         }
     }

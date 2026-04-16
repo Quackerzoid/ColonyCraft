@@ -11,6 +11,8 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+import village.automation.mod.client.renderer.CourierModel;
+import village.automation.mod.client.renderer.CourierRenderer;
 import village.automation.mod.client.renderer.VillagerWorkerRenderer;
 import village.automation.mod.screen.AnimalPenBlockScreen;
 import village.automation.mod.screen.BrewingBlockScreen;
@@ -56,5 +58,11 @@ public class VillageModClient {
     @SubscribeEvent
     static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(VillageMod.VILLAGER_WORKER.get(), VillagerWorkerRenderer::new);
+        event.registerEntityRenderer(VillageMod.COURIER.get(), CourierRenderer::new);
+    }
+
+    @SubscribeEvent
+    static void onRegisterLayerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
+        event.registerLayerDefinition(VillageMod.COURIER_LAYER, CourierModel::createBodyLayer);
     }
 }

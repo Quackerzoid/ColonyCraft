@@ -9,12 +9,16 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
+import village.automation.mod.ItemRequest;
 import village.automation.mod.blockentity.FarmBlockEntity;
+import village.automation.mod.blockentity.IWorkplaceBlockEntity;
+import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 
@@ -57,8 +61,10 @@ public class FarmerWorkGoal extends Goal {
     private Phase    phase;
     @Nullable
     private BlockPos targetPos;
-    private int      scanCooldown = 0;
-    private int      timeout      = 0;
+    private int      scanCooldown    = 0;
+    private int      timeout         = 0;
+    // Throttles how often we post a tool request to the heart (30 s)
+    private int      requestCooldown = 0;
 
     public FarmerWorkGoal(VillagerWorkerEntity farmer) {
         this.farmer = farmer;
@@ -69,6 +75,7 @@ public class FarmerWorkGoal extends Goal {
 
     @Override
     public boolean canUse() {
+        if (requestCooldown > 0) requestCooldown--;
         if (!farmer.level().isDay()) return false;         // no farming at night
         if (farmer.isTooHungryToWork()) return false;      // won't work below 20 % food
         if (scanCooldown > 0) { scanCooldown--; return false; }
@@ -76,7 +83,15 @@ public class FarmerWorkGoal extends Goal {
 
         if (!(farmer.level() instanceof ServerLevel level)) return false;
         if (farmer.getJob() != JobType.FARMER) return false;
-        if (!hasHoeEquipped()) return false;   // hoe required to work
+        if (!hasHoeEquipped()) {
+            if (requestCooldown <= 0) {
+                submitToolRequest(level, new ItemStack(Items.IRON_HOE));
+                requestCooldown = 600;
+            }
+            return false;
+        }
+        // Hoe is present — clear any pending request
+        resolveToolRequest(level);
 
         BlockPos workplace = farmer.getWorkplacePos();
         if (workplace == null) return false;
@@ -200,6 +215,30 @@ public class FarmerWorkGoal extends Goal {
         farmer.getNavigation().stop();
         targetPos    = null;
         scanCooldown = SCAN_INTERVAL;
+    }
+
+    // ── Tool request helpers ──────────────────────────────────────────────────
+
+    private void submitToolRequest(ServerLevel level, ItemStack tool) {
+        VillageHeartBlockEntity heart = findHeart(level);
+        if (heart == null) return;
+        heart.addRequest(new ItemRequest(
+                farmer.getUUID(), farmer.getBaseName(), JobType.FARMER, tool));
+    }
+
+    private void resolveToolRequest(ServerLevel level) {
+        VillageHeartBlockEntity heart = findHeart(level);
+        if (heart != null) heart.resolveRequest(farmer.getUUID());
+    }
+
+    @Nullable
+    private VillageHeartBlockEntity findHeart(ServerLevel level) {
+        BlockPos workplace = farmer.getWorkplacePos();
+        if (workplace == null) return null;
+        if (!(level.getBlockEntity(workplace) instanceof IWorkplaceBlockEntity wbe)) return null;
+        BlockPos heartPos = wbe.getLinkedHeartPos();
+        if (heartPos == null) return null;
+        return level.getBlockEntity(heartPos) instanceof VillageHeartBlockEntity h ? h : null;
     }
 
     // ── Navigation ────────────────────────────────────────────────────────────

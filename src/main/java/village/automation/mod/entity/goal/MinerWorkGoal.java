@@ -7,9 +7,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.PickaxeItem;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
+import village.automation.mod.ItemRequest;
+import village.automation.mod.blockentity.IWorkplaceBlockEntity;
+import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 
@@ -68,6 +73,8 @@ public class MinerWorkGoal extends Goal {
     private int      scanCooldown     = 0;
     /** Set in tick() when approach has timed out; checked in canContinueToUse(). */
     private boolean  approachFailed   = false;
+    // Throttles how often we post a tool request to the heart (30 s)
+    private int      requestCooldown  = 0;
 
     @Nullable private BlockPos targetPos = null;
 
@@ -83,13 +90,22 @@ public class MinerWorkGoal extends Goal {
 
     @Override
     public boolean canUse() {
+        if (requestCooldown > 0) requestCooldown--;
         if (!miner.level().isDay()) return false;          // no mining at night
         if (miner.isTooHungryToWork()) return false;       // won't work below 20 % food
         if (scanCooldown > 0) { scanCooldown--; return false; }
 
         if (!(miner.level() instanceof ServerLevel level)) return false;
         if (miner.getJob() != JobType.MINER)              return false;
-        if (!hasPickaxeEquipped())                        return false;
+        if (!hasPickaxeEquipped()) {
+            if (requestCooldown <= 0) {
+                submitToolRequest(level, new ItemStack(Items.IRON_PICKAXE));
+                requestCooldown = 600;
+            }
+            return false;
+        }
+        // Pickaxe is present — clear any pending request
+        resolveToolRequest(level);
 
         BlockPos workplace = miner.getWorkplacePos();
         if (workplace == null) return false;
@@ -208,6 +224,30 @@ public class MinerWorkGoal extends Goal {
         approachFailed = false;
         targetPos     = null;
         phase         = Phase.APPROACH;
+    }
+
+    // ── Tool request helpers ──────────────────────────────────────────────────
+
+    private void submitToolRequest(ServerLevel level, ItemStack tool) {
+        VillageHeartBlockEntity heart = findHeart(level);
+        if (heart == null) return;
+        heart.addRequest(new ItemRequest(
+                miner.getUUID(), miner.getBaseName(), JobType.MINER, tool));
+    }
+
+    private void resolveToolRequest(ServerLevel level) {
+        VillageHeartBlockEntity heart = findHeart(level);
+        if (heart != null) heart.resolveRequest(miner.getUUID());
+    }
+
+    @Nullable
+    private VillageHeartBlockEntity findHeart(ServerLevel level) {
+        BlockPos workplace = miner.getWorkplacePos();
+        if (workplace == null) return null;
+        if (!(level.getBlockEntity(workplace) instanceof IWorkplaceBlockEntity wbe)) return null;
+        BlockPos heartPos = wbe.getLinkedHeartPos();
+        if (heartPos == null) return null;
+        return level.getBlockEntity(heartPos) instanceof VillageHeartBlockEntity h ? h : null;
     }
 
     // ── Navigation ───────────────────────────────────────────────────────────

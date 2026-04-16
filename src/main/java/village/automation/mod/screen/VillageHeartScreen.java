@@ -14,6 +14,8 @@ import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.menu.VillageHeartMenu;
 import village.automation.mod.network.SetVillageNamePacket;
 
+import village.automation.mod.ItemRequest;
+
 import java.util.List;
 
 public class VillageHeartScreen extends AbstractContainerScreen<VillageHeartMenu> {
@@ -40,7 +42,12 @@ public class VillageHeartScreen extends AbstractContainerScreen<VillageHeartMenu
     private static final int SIDEBAR_X =  172;
     private static final int SIDEBAR_Y =   20;
     private static final int SIDEBAR_W =   74;
-    private static final int SIDEBAR_H =   76;
+    private static final int SIDEBAR_H =   76;   // base height (name + radius + workers)
+
+    // Requests section below the base sidebar (up to MAX_VISIBLE_REQUESTS shown)
+    private static final int MAX_VISIBLE_REQUESTS = 5;
+    private static final int REQUEST_ENTRY_H      = 11;  // px per request row
+    private static final int REQUEST_SECTION_H    = 18 + MAX_VISIBLE_REQUESTS * REQUEST_ENTRY_H;
 
     // ── Village naming overlay ────────────────────────────────────────────────
     private boolean namingMode = false;
@@ -107,21 +114,24 @@ public class VillageHeartScreen extends AbstractContainerScreen<VillageHeartMenu
                    0xFF_FFB800);
         }
 
-        // ── Sidebar background ────────────────────────────────────────────────
-        int sx = this.leftPos + SIDEBAR_X;
-        int sy = this.topPos  + SIDEBAR_Y;
+        // ── Sidebar background (base section + requests extension) ───────────
+        int sx      = this.leftPos + SIDEBAR_X;
+        int sy      = this.topPos  + SIDEBAR_Y;
+        int totalH  = SIDEBAR_H + REQUEST_SECTION_H;
         // Panel fill — same grey as the main panel
-        g.fill(sx, sy, sx + SIDEBAR_W, sy + SIDEBAR_H, 0xFF_C6C6C6);
+        g.fill(sx, sy, sx + SIDEBAR_W, sy + totalH, 0xFF_C6C6C6);
         // Top shadow border
-        g.fill(sx + 4, sy,                 sx + SIDEBAR_W,     sy + 1,             0xFF_555555);
+        g.fill(sx + 4, sy,                  sx + SIDEBAR_W,     sy + 1,             0xFF_555555);
         // Right highlight border
-        g.fill(sx + SIDEBAR_W - 1, sy,     sx + SIDEBAR_W,     sy + SIDEBAR_H,     0xFF_FFFFFF);
+        g.fill(sx + SIDEBAR_W - 1, sy,      sx + SIDEBAR_W,     sy + totalH,        0xFF_FFFFFF);
         // Bottom highlight border
-        g.fill(sx + 4, sy + SIDEBAR_H - 1, sx + SIDEBAR_W,     sy + SIDEBAR_H,     0xFF_FFFFFF);
+        g.fill(sx + 4, sy + totalH - 1,     sx + SIDEBAR_W,     sy + totalH,        0xFF_FFFFFF);
         // Divider under the village name
-        g.fill(sx + 4, sy + 17,            sx + SIDEBAR_W - 1, sy + 18,            0xFF_909090);
+        g.fill(sx + 4, sy + 17,             sx + SIDEBAR_W - 1, sy + 18,            0xFF_909090);
         // Divider between Radius and Workers
-        g.fill(sx + 4, sy + 45,            sx + SIDEBAR_W - 1, sy + 46,            0xFF_909090);
+        g.fill(sx + 4, sy + 45,             sx + SIDEBAR_W - 1, sy + 46,            0xFF_909090);
+        // Divider above the requests section
+        g.fill(sx + 4, sy + SIDEBAR_H,      sx + SIDEBAR_W - 1, sy + SIDEBAR_H + 1, 0xFF_909090);
 
         // ── Locked upgrade slot overlays ──────────────────────────────────────
         // Slot I is always insertable; II requires I; III requires II.
@@ -246,30 +256,54 @@ public class VillageHeartScreen extends AbstractContainerScreen<VillageHeartMenu
     }
 
     /**
-     * Draws the village name, radius, and worker count inside the sidebar.
-     * Uses absolute screen coordinates since the sidebar is outside the main panel.
+     * Draws the village name, radius, worker count, and pending request list
+     * inside the sidebar.  Uses absolute screen coordinates.
      */
     private void drawSidebarContent(GuiGraphics g) {
-        int sx = this.leftPos + SIDEBAR_X + 6;   // 6 px left padding inside sidebar
-        int sy = this.topPos  + SIDEBAR_Y;
+        int sx    = this.leftPos + SIDEBAR_X + 6;   // 6 px left padding inside sidebar
+        int sy    = this.topPos  + SIDEBAR_Y;
+        int maxW  = SIDEBAR_W - 14;                 // usable text width
 
         // Village name — truncated with "…" if it doesn't fit
         String name = this.menu.getVillageName();
-        int maxNameW = SIDEBAR_W - 14;
-        if (this.font.width(name) > maxNameW) {
-            name = this.font.plainSubstrByWidth(
-                    name, maxNameW - this.font.width("...")) + "...";
+        if (this.font.width(name) > maxW) {
+            name = this.font.plainSubstrByWidth(name, maxW - this.font.width("...")) + "...";
         }
         g.drawString(this.font, name, sx, sy + 4, 0x404040, false);
 
-        // Radius (below first divider at SIDEBAR_Y + 17)
+        // Radius (below first divider at sy + 17)
         g.drawString(this.font, "Radius",                          sx, sy + 21, 0x606060, false);
         g.drawString(this.font, this.menu.getRadius() + " blocks", sx, sy + 31, 0xFFFFFF, false);
 
-        // Workers (below second divider at SIDEBAR_Y + 45)
-        g.drawString(this.font, "Workers",                                         sx, sy + 49, 0x606060, false);
-        g.drawString(this.font, this.menu.getWorkerCount() + " / " + this.menu.getWorkerCap(),
-                     sx, sy + 59, 0xFFFFFF, false);
+        // Workers (below second divider at sy + 45)
+        g.drawString(this.font, "Workers",                                                       sx, sy + 49, 0x606060, false);
+        g.drawString(this.font, this.menu.getWorkerCount() + " / " + this.menu.getWorkerCap(),   sx, sy + 59, 0xFFFFFF, false);
+
+        // ── Requests section (below base sidebar) ─────────────────────────────
+        int ry = sy + SIDEBAR_H + 4;   // top of request section content (below divider + gap)
+        g.drawString(this.font, "Requests", sx, ry, 0x606060, false);
+
+        List<ItemRequest> reqs = this.menu.getRequests();
+        if (reqs.isEmpty()) {
+            g.drawString(this.font, "None", sx, ry + 11, 0x888888, false);
+        } else {
+            int shown = Math.min(reqs.size(), MAX_VISIBLE_REQUESTS);
+            for (int i = 0; i < shown; i++) {
+                ItemRequest req  = reqs.get(i);
+                String itemName  = req.getRequestedItem().getHoverName().getString();
+                String entryText = req.getWorkerName() + ": " + itemName;
+                if (this.font.width(entryText) > maxW) {
+                    entryText = this.font.plainSubstrByWidth(
+                            entryText, maxW - this.font.width("...")) + "...";
+                }
+                g.drawString(this.font, entryText, sx, ry + 11 + i * REQUEST_ENTRY_H, 0xFFFFFF, false);
+            }
+            if (reqs.size() > MAX_VISIBLE_REQUESTS) {
+                String more = "+" + (reqs.size() - MAX_VISIBLE_REQUESTS) + " more";
+                int moreY   = ry + 11 + MAX_VISIBLE_REQUESTS * REQUEST_ENTRY_H;
+                g.drawString(this.font, more, sx, moreY, 0x888888, false);
+            }
+        }
     }
 
     // ── Input handling ─────────────────────────────────────────────────────────

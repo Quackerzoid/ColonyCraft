@@ -15,7 +15,17 @@
       "Bash(cmd /c \"dir /s /b C:\\\\Users\\\\kianc\\\\.gradle\\\\caches 2>nul | findstr /i MapColor | findstr /i .java\")",
       "Bash(python -c \"from PIL import Image; print\\('PIL ok'\\)\")",
       "Bash(dir \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\")",
-      "Bash(copy \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\fishing_block.png\" \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\lumbermill.png\")"
+      "Bash(copy \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\fishing_block.png\" \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\lumbermill.png\")",
+      "Bash(xargs grep *)",
+      "Bash(xargs -I{} sh -c 'jar tf \"{}\" 2>/dev/null | grep -i copper_golem && echo \"FOUND IN: {}\"')",
+      "Bash(grep -v \"\\\\.part$\")",
+      "Bash(jar tf *)",
+      "Bash(/c/Users/Laurie/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2/bin/jar.exe tf *)",
+      "Bash(mkdir -p /c/Users/Laurie/Downloads/ColonyCraft-main/src/main/resources/assets/colonycraft/textures/entity)",
+      "Bash(cd \"/tmp\")",
+      "Bash(/c/Users/Laurie/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2/bin/jar.exe xf *)",
+      "Bash(cp /tmp/assets/minecraft/textures/entity/copper_golem/copper_golem.png /c/Users/Laurie/Downloads/ColonyCraft-main/src/main/resources/assets/colonycraft/textures/entity/courier.png)",
+      "Bash(xargs cat *)"
     ]
   }
 }

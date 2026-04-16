@@ -2,6 +2,7 @@ package village.automation.mod.menu;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -10,16 +11,28 @@ import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.neoforge.network.PacketDistributor;
+import village.automation.mod.ItemRequest;
 import village.automation.mod.VillageMod;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
+import village.automation.mod.network.SyncRequestsPacket;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class VillageHeartMenu extends AbstractContainerMenu {
 
     private final VillageHeartBlockEntity blockEntity;
     private final ContainerData containerData;
+    private final Player player;
 
     // Village name — set from buf on the client, from the block entity on the server
     private String villageName;
+
+    // Client-side request list, populated via SyncRequestsPacket
+    private List<ItemRequest> requests = new ArrayList<>();
+    // Last request-list version we synced — -1 forces an initial send
+    private int lastSyncedRequestsVersion = -1;
 
     // ── Slot indices ──────────────────────────────────────────────────────────
     // 0         : Village Upgrade I   ( 8, 17) — locked once placed
@@ -35,6 +48,7 @@ public class VillageHeartMenu extends AbstractContainerMenu {
         this.blockEntity   = blockEntity;
         this.containerData = blockEntity.data;
         this.villageName   = blockEntity.getVillageName();
+        this.player        = inventory.player;
 
         addUpgradeSlots(blockEntity);
         addInputSlot(blockEntity);
@@ -56,6 +70,7 @@ public class VillageHeartMenu extends AbstractContainerMenu {
 
         this.blockEntity   = vh;
         this.containerData = vh.data;
+        this.player        = inventory.player;
 
         addUpgradeSlots(vh);
         addInputSlot(vh);
@@ -126,6 +141,29 @@ public class VillageHeartMenu extends AbstractContainerMenu {
     /** Called client-side after the player confirms a name so the screen updates immediately. */
     public void setVillageName(String name) { this.villageName = name; }
     public BlockPos getHeartPos() { return this.blockEntity.getBlockPos(); }
+
+    /** Returns the client-side cached request list (populated via {@link SyncRequestsPacket}). */
+    public List<ItemRequest> getRequests() { return requests; }
+
+    /** Called by {@link SyncRequestsPacket} on the client to update the displayed list. */
+    public void updateRequests(List<ItemRequest> incoming) {
+        this.requests = new ArrayList<>(incoming);
+    }
+
+    // ── Request sync ──────────────────────────────────────────────────────────
+
+    @Override
+    public void broadcastChanges() {
+        super.broadcastChanges();
+        // Server-side only: send a sync packet whenever the request list changes
+        if (player instanceof ServerPlayer serverPlayer
+                && lastSyncedRequestsVersion != blockEntity.getRequestsVersion()) {
+            lastSyncedRequestsVersion = blockEntity.getRequestsVersion();
+            PacketDistributor.sendToPlayer(serverPlayer,
+                    new SyncRequestsPacket(blockEntity.getBlockPos(),
+                            blockEntity.getPendingRequests()));
+        }
+    }
 
     // ── Validity ──────────────────────────────────────────────────────────────
 
