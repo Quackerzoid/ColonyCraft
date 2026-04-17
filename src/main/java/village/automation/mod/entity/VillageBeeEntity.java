@@ -32,6 +32,8 @@ public class VillageBeeEntity extends Bee {
 
     @Nullable private BlockPos homePos;
     @Nullable private BlockPos heartPos;
+    /** Whether this bee is currently carrying pollen back to the hive. */
+    private boolean carryingPollen = false;
 
     public VillageBeeEntity(EntityType<? extends VillageBeeEntity> type, Level level) {
         super(type, level);
@@ -66,6 +68,23 @@ public class VillageBeeEntity extends Bee {
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
         // No target selector entries — village bees are peaceful
+    }
+
+    // ── Pollen overlay ────────────────────────────────────────────────────────
+
+    /**
+     * Controls whether the vanilla bee renderer draws the pollen texture overlay.
+     * {@link net.minecraft.client.renderer.entity.BeeRenderer} reads {@link #hasNectar()},
+     * which we override to return our own flag — avoiding the inaccessible
+     * {@code Bee.setHasNectar(boolean)} in NeoForge 1.21.
+     */
+    public void setCarryingPollen(boolean value) {
+        this.carryingPollen = value;
+    }
+
+    @Override
+    public boolean hasNectar() {
+        return carryingPollen;
     }
 
     // ── Home / heart accessors ────────────────────────────────────────────────

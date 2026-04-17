@@ -93,24 +93,17 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
     // Index 2 — bee count
     // Index 3 — actively smoking: workerRecentTicks > 0 AND smokingTimer > 0  (0/1)
     // Index 4 — hasFuel: at least one log in fuelInput  (0/1)
+    //
+    // Uses a plain int[] so that set(i,v) actually stores the value on the CLIENT.
+    // The previous lambda form only synced indices 0-1 — indices 2-4 were never
+    // written on the client side, causing bee count, burning-state and fuel-flag
+    // to always read as 0/false in the GUI.
+    private final int[] syncData = new int[5];
+
     public final ContainerData data = new ContainerData() {
-        @Override public int get(int i) {
-            return switch (i) {
-                case 0 -> pollenCount;
-                case 1 -> smokingTimer;
-                case 2 -> claimedBees.size();
-                case 3 -> (workerRecentTicks > 0 && smokingTimer > 0) ? 1 : 0;
-                case 4 -> hasFuel() ? 1 : 0;
-                default -> 0;
-            };
-        }
-        @Override public void set(int i, int v) {
-            switch (i) {
-                case 0 -> pollenCount  = v;
-                case 1 -> smokingTimer = v;
-            }
-        }
-        @Override public int getCount() { return 5; }
+        @Override public int get(int i)         { return (i >= 0 && i < 5) ? syncData[i] : 0; }
+        @Override public void set(int i, int v) { if (i >= 0 && i < 5) syncData[i] = v; }
+        @Override public int getCount()         { return 5; }
     };
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -143,6 +136,13 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
         }
         // Countdown — entity AI refreshes this to 10 each tick it calls markWorkerPresent()
         if (workerRecentTicks > 0) workerRecentTicks--;
+        // Push live state into the syncData array so every index is properly
+        // synced to the client (set() stores into this array on the client side)
+        syncData[0] = pollenCount;
+        syncData[1] = smokingTimer;
+        syncData[2] = claimedBees.size();
+        syncData[3] = (workerRecentTicks > 0 && smokingTimer > 0) ? 1 : 0;
+        syncData[4] = hasFuel() ? 1 : 0;
         setChanged();
     }
 

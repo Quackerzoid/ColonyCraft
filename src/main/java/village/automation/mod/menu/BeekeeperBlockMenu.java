@@ -130,12 +130,12 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
     private void addPlayerInventory(Inventory inv) {
         for (int row = 0; row < 3; row++)
             for (int col = 0; col < 9; col++)
-                this.addSlot(new Slot(inv, col + row * 9 + 9, 8 + col * 18, 112 + row * 18));
+                this.addSlot(new Slot(inv, col + row * 9 + 9, 8 + col * 18, 138 + row * 18));
     }
 
     private void addPlayerHotbar(Inventory inv) {
         for (int col = 0; col < 9; col++)
-            this.addSlot(new Slot(inv, col, 8 + col * 18, 166));
+            this.addSlot(new Slot(inv, col, 8 + col * 18, 192));
     }
 
     // ── Validity / shift-click ────────────────────────────────────────────────

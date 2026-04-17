@@ -61,12 +61,8 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
     private static final int EP_X         = MAIN_W + EP_GAP;  // panel-relative x of entity panel
 
     // ── Honey bar geometry (panel-relative) ───────────────────────────────────
-    /** x of the honey input slot (panel-relative). */
-    private static final int HONEY_SLOT_X  = 7;
-    /** y of the honey input slot (panel-relative). */
-    private static final int HONEY_SLOT_Y  = 82;
     /** x-origin of the vertical honey bar. */
-    private static final int HONEY_BAR_X   = 32;
+    private static final int HONEY_BAR_X   = 7;
     /** y-origin of the vertical honey bar (top of bar). */
     private static final int HONEY_BAR_Y   = 82;
     /** Width of the vertical honey bar. */
@@ -209,7 +205,7 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
         // ── Honey labels ──────────────────────────────────────────────────────
         g.drawString(this.font,
                 Component.literal("Honey").withStyle(ChatFormatting.GRAY),
-                HONEY_SLOT_X, 72, 0xDDB33A, false);
+                HONEY_BAR_X, 72, 0xDDB33A, false);
 
         int honeyLevel = menu.getHoneyLevel();
         String honeyStr = honeyLevel + "/" + CourierEntity.MAX_HONEY_LEVEL;

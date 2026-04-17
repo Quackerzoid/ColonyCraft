@@ -34,7 +34,7 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
 
     // ── Dimensions ────────────────────────────────────────────────────────────
     private static final int W = 176;
-    private static final int H = 192;
+    private static final int H = 218;
 
     // ── Colours ───────────────────────────────────────────────────────────────
     private static final int COL_BG        = 0xFF3B3B3B;
@@ -48,11 +48,24 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
     private static final int COL_BAR_SMOKE = 0xFFAA7733;   // warm brown smoke bar
     private static final int COL_BEE       = 0xFFFFCC00;   // bee yellow
 
+    // ── Pollen bar (sits in the gap between fuel and output grids) ────────────
+    /** Panel-relative x of the vertical pollen bar. */
+    private static final int POLLEN_BAR_X    = 74;
+    /** Panel-relative y of the top of the pollen bar (aligns with top slot row). */
+    private static final int POLLEN_BAR_Y    = 34;
+    /** Width of the pollen bar. */
+    private static final int POLLEN_BAR_W    = 10;
+    /** Height — matches the 3×3 slot grid (3 rows × 18 px − 2 px border = 52). */
+    private static final int POLLEN_BAR_H    = 52;
+    private static final int COL_POLLEN_BG   = 0xFF222222;
+    private static final int COL_POLLEN_FILL = 0xFFDDB33A;  // amber, same as accent
+    private static final int COL_POLLEN_FULL = 0xFFFFDD44;  // bright gold when full
+
     public BeekeeperBlockScreen(BeekeeperBlockMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         this.imageWidth  = W;
         this.imageHeight = H;
-        this.inventoryLabelY = 112;
+        this.inventoryLabelY = 138;
     }
 
     @Override
@@ -78,12 +91,33 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
             g.fill(sx,     sy,     sx + 16, sy + 16, COL_SLOT_LT);
         }
 
-        // Divider between grids and info row
-        g.fill(x + 4, y + 92, x + W - 4, y + 93, COL_DIVIDER);
+        // ── Pollen bar (in the gap between fuel and output grids) ────────────
+        // Outer border (matches slot-background style)
+        g.fill(x + POLLEN_BAR_X - 1, y + POLLEN_BAR_Y - 1,
+               x + POLLEN_BAR_X + POLLEN_BAR_W + 1, y + POLLEN_BAR_Y + POLLEN_BAR_H + 1,
+               COL_SLOT_DK);
+        // Inner background
+        g.fill(x + POLLEN_BAR_X, y + POLLEN_BAR_Y,
+               x + POLLEN_BAR_X + POLLEN_BAR_W, y + POLLEN_BAR_Y + POLLEN_BAR_H,
+               COL_POLLEN_BG);
+        // Fill — bottom to top
+        int pollenFill = menu.getPollenCount();
+        if (pollenFill > 0) {
+            float fraction = Math.min(1.0f, pollenFill / (float) BeekeeperBlockEntity.MAX_POLLEN);
+            int   fillH    = Math.max(1, (int) (POLLEN_BAR_H * fraction));
+            int   fillY    = y + POLLEN_BAR_Y + (POLLEN_BAR_H - fillH);
+            boolean full   = pollenFill >= BeekeeperBlockEntity.MAX_POLLEN;
+            g.fill(x + POLLEN_BAR_X, fillY,
+                   x + POLLEN_BAR_X + POLLEN_BAR_W, y + POLLEN_BAR_Y + POLLEN_BAR_H,
+                   full ? COL_POLLEN_FULL : COL_POLLEN_FILL);
+        }
 
-        // Smoking progress bar (x=8..168, y=104, h=6)
+        // Divider between grids and info row
+        g.fill(x + 4, y + 94, x + W - 4, y + 95, COL_DIVIDER);
+
+        // Smoking progress bar (x=8..168, y=120, h=6)
         final int barX = x + 8;
-        final int barY = y + 104;
+        final int barY = y + 120;
         final int barW = W - 16;
         g.fill(barX - 1, barY - 1, barX + barW + 1, barY + 7, COL_BAR_BG);
         if (menu.isFuelBurning()) {
@@ -94,7 +128,7 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
         }
 
         // Divider above player inventory
-        g.fill(x + 4, y + 110, x + W - 4, y + 111, COL_DIVIDER);
+        g.fill(x + 4, y + 132, x + W - 4, y + 133, COL_DIVIDER);
     }
 
     @Override
@@ -103,7 +137,7 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
         g.drawString(this.font, this.title, 8, 6, 0xFFFFFF, false);
 
         // "Inventory"
-        g.drawString(this.font, "Inventory", 8, 112, 0x404040, false);
+        g.drawString(this.font, "Inventory", 8, 138, 0x404040, false);
 
         // Worker info
         int infoY = 18;
@@ -128,6 +162,9 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
                 Component.literal("Fuel (Logs)").withStyle(ChatFormatting.GRAY),
                 8, 25, 0xAAAAAA, false);
         g.drawString(this.font,
+                Component.literal("Pollen").withStyle(ChatFormatting.GRAY),
+                70, 25, COL_ACCENT & 0xFFFFFF, false);
+        g.drawString(this.font,
                 Component.literal("Honeycomb").withStyle(ChatFormatting.GRAY),
                 98, 25, 0xAAAAAA, false);
 
@@ -135,28 +172,25 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
         int beeCount = menu.getBeeCount();
         g.drawString(this.font,
                 Component.literal("Bees: " + beeCount + "/" + BeekeeperBlockEntity.MAX_BEES),
-                8, 94, COL_BEE & 0xFFFFFF, false);
+                8, 100, COL_BEE & 0xFFFFFF, false);
 
-        // Pollen count
-        int pollen = menu.getPollenCount();
-        g.drawString(this.font,
-                Component.literal("Pollen: " + pollen),
-                90, 94, COL_ACCENT & 0xFFFFFF, false);
+        // (Pollen is shown as the vertical bar — no text label needed)
+        int pollen = menu.getPollenCount();   // still needed for status logic below
 
         // Smoking status label
         if (menu.isFuelBurning()) {
             g.drawString(this.font,
                     Component.literal("Smoking...").withStyle(ChatFormatting.GRAY),
-                    8, 97, 0x887755, false);
+                    8, 110, 0x887755, false);
         } else if (pollen > 0 && menu.hasFuel()) {
             // Logs are present but the keeper worker hasn't started yet (or is away)
             g.drawString(this.font,
                     Component.literal("Awaiting worker").withStyle(ChatFormatting.GRAY),
-                    8, 97, 0x887755, false);
+                    8, 110, 0x887755, false);
         } else if (pollen > 0) {
             g.drawString(this.font,
                     Component.literal("No fuel").withStyle(ChatFormatting.RED),
-                    8, 97, 0xFF5555, false);
+                    8, 110, 0xFF5555, false);
         }
     }
 

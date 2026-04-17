@@ -10,7 +10,6 @@ import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.CourierEntity;
 
@@ -40,7 +39,6 @@ public class CourierMenu extends AbstractContainerMenu {
             @Override public int getCount()            { return 1; }
         };
         setupSlots(courier.getCarriedInventory());
-        addHoneyInputSlot(courier.getHoneyInput());
         this.addDataSlots(honeyData);
     }
 
@@ -57,7 +55,6 @@ public class CourierMenu extends AbstractContainerMenu {
             @Override public int getCount()            { return 1; }
         } : new SimpleContainerData(1);
         setupSlots(courier != null ? courier.getCarriedInventory() : new SimpleContainer(9));
-        addHoneyInputSlot(courier != null ? courier.getHoneyInput() : new SimpleContainer(1));
         this.addDataSlots(honeyData);
     }
 
@@ -75,16 +72,6 @@ public class CourierMenu extends AbstractContainerMenu {
                 @Override public boolean mayPlace(ItemStack stack)  { return false; }
             });
         }
-    }
-
-    /**
-     * Adds 1 honey input slot (y = 82, x = 7).
-     * The player may place honeycomb here; the courier entity consumes it each tick.
-     */
-    private void addHoneyInputSlot(SimpleContainer inv) {
-        this.addSlot(new Slot(inv, 0, 7, 82) {
-            @Override public boolean mayPlace(ItemStack stack) { return stack.is(Items.HONEYCOMB); }
-        });
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────

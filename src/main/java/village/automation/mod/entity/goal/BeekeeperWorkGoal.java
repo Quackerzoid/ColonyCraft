@@ -169,6 +169,8 @@ public class BeekeeperWorkGoal extends Goal {
     }
 
     private void tickApproachBee(BeekeeperBlockEntity be) {
+        // Still counts as working at the block while fetching a bee
+        be.markWorkerPresent();
         if (targetBee == null || !targetBee.isAlive() || be.hasClaimed(targetBee.getUUID())) {
             returnToBlock();
             return;
@@ -183,6 +185,8 @@ public class BeekeeperWorkGoal extends Goal {
     }
 
     private void tickClaimBee(BeekeeperBlockEntity be) {
+        // Still counts as working at the block while converting the bee
+        be.markWorkerPresent();
         if (targetBee == null || !targetBee.isAlive()) {
             returnToBlock();
             return;
