@@ -192,6 +192,21 @@ public class VillagerWorkerEntity extends AbstractVillager {
         super(type, level);
     }
 
+    /**
+     * Override navigation creation so that {@code canOpenDoors} is set to {@code true}
+     * from the very beginning, before any goals are registered.  This tells the
+     * {@link net.minecraft.world.level.pathfinder.WalkNodeEvaluator} to treat closed
+     * fence-gate and door nodes as passable, and lets {@link OpenDoorGoal} physically
+     * open/close them at runtime.
+     */
+    @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
+        net.minecraft.world.entity.ai.navigation.GroundPathNavigation nav =
+                new net.minecraft.world.entity.ai.navigation.GroundPathNavigation(this, level);
+        nav.setCanOpenDoors(true);
+        return nav;
+    }
+
     public static AttributeSupplier.Builder createAttributes() {
         return AbstractVillager.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
@@ -201,10 +216,6 @@ public class VillagerWorkerEntity extends AbstractVillager {
 
     @Override
     protected void registerGoals() {
-        // Allow the path navigator to route through closed fence gates and doors
-        if (this.getNavigation() instanceof net.minecraft.world.entity.ai.navigation.GroundPathNavigation nav) {
-            nav.setCanOpenDoors(true);
-        }
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(0, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));

@@ -572,9 +572,11 @@ public class AnimalKeeperWorkGoal extends Goal {
         List<Animal> candidates = (List<Animal>) findNearPen(level, penPos, type.getAnimalClass(), SEARCH_RADIUS);
         List<Animal> eligible = new java.util.ArrayList<>();
         for (Animal a : candidates) {
-            // canFallInLove() checks both loveCooldown == 0 AND !isInLove(), so it
-            // correctly waits out the post-breeding cooldown before trying again.
-            if (a.isAlive() && !a.isBaby() && a.canFallInLove()) {
+            // canFallInLove() checks inLove <= 0, but after breeding vanilla immediately
+            // resets inLove to 0 via resetLove() while setting age = 6000 for the real
+            // cooldown.  We must also require getAge() == 0 (normal adult, not on the
+            // post-breeding timer) to prevent re-breeding during the cooldown window.
+            if (a.isAlive() && a.getAge() == 0 && a.canFallInLove()) {
                 eligible.add(a);
             }
             if (eligible.size() >= 2) break;
