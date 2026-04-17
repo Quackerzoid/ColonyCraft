@@ -73,6 +73,12 @@ public class AnimalKeeperWorkGoal extends Goal {
     @Nullable private UUID   breedAnimal2UUID = null;
     /** Last known position of a sheared sheep (for wool collection). */
     @Nullable private BlockPos shearPos       = null;
+    /**
+     * Fence-gate positions that were opened by this goal so the keeper could
+     * path through them.  Closed again after delivery (or on {@link #stop()}).
+     */
+    private final java.util.LinkedHashMap<BlockPos, net.minecraft.world.level.block.state.BlockState>
+            openedGates = new java.util.LinkedHashMap<>();
 
     public AnimalKeeperWorkGoal(VillagerWorkerEntity keeper) {
         this.keeper = keeper;
@@ -116,6 +122,9 @@ public class AnimalKeeperWorkGoal extends Goal {
     public void stop() {
         releaseLeash();
         keeper.getNavigation().stop();
+        if (keeper.level() instanceof Level level) {
+            closeOpenedGates(level);
+        }
         phase            = Phase.IDLE;
         targetAnimalUUID = null;
         breedAnimal2UUID = null;
@@ -265,6 +274,9 @@ public class AnimalKeeperWorkGoal extends Goal {
                 if (pen != null) {
                     pen.addClaimedAnimal(targetAnimalUUID);
                 }
+                // Open any fence gates near the pen NOW, before calling navigateTo,
+                // so the path is computed with the gates already open.
+                openGatesNear(level, penPos, 4);
                 navigateTo(penPos);
             }
             herdTimeout = HERD_TIMEOUT;
@@ -316,6 +328,8 @@ public class AnimalKeeperWorkGoal extends Goal {
             }
             // Teleport animal directly onto the pen block so it is guaranteed inside the fence
             animal.teleportTo(penPos.getX() + 0.5, penPos.getY(), penPos.getZ() + 0.5);
+            // Close any gates we opened for this delivery run
+            closeOpenedGates(level);
             targetAnimalUUID = null;
             phase = Phase.IDLE;
         }
@@ -687,6 +701,41 @@ public class AnimalKeeperWorkGoal extends Goal {
     private static boolean isDaytime(ServerLevel level) {
         long time = level.getDayTime() % 24000;
         return time < 13000;
+    }
+
+    // ── Gate helpers ──────────────────────────────────────────────────────────
+
+    /**
+     * Opens every closed fence gate within {@code radius} blocks of {@code centre}.
+     * The original states are saved so they can be restored by {@link #closeOpenedGates}.
+     * Call this <em>before</em> {@link #navigateTo} so the path is computed with the
+     * gates already open.
+     */
+    private void openGatesNear(Level level, BlockPos centre, int radius) {
+        for (BlockPos check : BlockPos.betweenClosed(
+                centre.offset(-radius, -1, -radius),
+                centre.offset( radius,  2,  radius))) {
+            net.minecraft.world.level.block.state.BlockState state = level.getBlockState(check);
+            if (state.getBlock() instanceof net.minecraft.world.level.block.FenceGateBlock
+                    && !state.getValue(net.minecraft.world.level.block.FenceGateBlock.OPEN)) {
+                BlockPos immutable = check.immutable();
+                openedGates.put(immutable, state);
+                level.setBlock(immutable,
+                        state.setValue(net.minecraft.world.level.block.FenceGateBlock.OPEN, true), 10);
+            }
+        }
+    }
+
+    /** Restores all fence gates that were opened by {@link #openGatesNear}. */
+    private void closeOpenedGates(Level level) {
+        for (java.util.Map.Entry<BlockPos, net.minecraft.world.level.block.state.BlockState> e
+                : openedGates.entrySet()) {
+            net.minecraft.world.level.block.state.BlockState current = level.getBlockState(e.getKey());
+            if (current.getBlock() instanceof net.minecraft.world.level.block.FenceGateBlock) {
+                level.setBlock(e.getKey(), e.getValue(), 10);
+            }
+        }
+        openedGates.clear();
     }
 
     private void navigateTo(BlockPos pos) {
