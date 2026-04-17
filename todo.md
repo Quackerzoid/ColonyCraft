@@ -46,3 +46,5 @@ make animalkeeper pick up eggs
 bees do not go into beekeeper block
 bees do not spin or go close enough to the farmland
 when you give animalkeeper items like wheat, seeds they disappear but he still uses them
+Iron Soul Golems name is the wrong way round
+Iron Soul Golems can be made outside a village heart's radius
