@@ -33,7 +33,8 @@ public enum JobType {
     POTION_BREWER ("Brewer ",       "Potion Brewer"),
 
     // ── Animal care ───────────────────────────────────────────────────────────
-    BEEKEEPER     ("Beekeeper ",    "Beekeeper"    );
+    BEEKEEPER     ("Beekeeper ",    "Beekeeper"    ),
+    BUTCHER       ("Butcher ",      "Butcher"      );
 
     // ── Fields ────────────────────────────────────────────────────────────────
 

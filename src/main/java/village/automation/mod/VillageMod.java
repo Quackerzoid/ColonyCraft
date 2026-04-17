@@ -53,6 +53,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import village.automation.mod.block.AnimalPenBlock;
 import village.automation.mod.block.BeekeeperBlock;
+import village.automation.mod.block.ButcherBlock;
 import village.automation.mod.block.BrewingBlock;
 import village.automation.mod.block.CookingBlock;
 import village.automation.mod.block.EnchantingBlock;
@@ -65,6 +66,7 @@ import village.automation.mod.block.SmithingBlock;
 import village.automation.mod.block.VillageHeartBlock;
 import village.automation.mod.blockentity.AnimalPenBlockEntity;
 import village.automation.mod.blockentity.BeekeeperBlockEntity;
+import village.automation.mod.blockentity.ButcherBlockEntity;
 import village.automation.mod.blockentity.BrewingBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.EnchantingBlockEntity;
@@ -82,6 +84,7 @@ import village.automation.mod.item.VillageWandItem;
 import village.automation.mod.loot.VillagerSoulLootModifier;
 import village.automation.mod.menu.AnimalPenBlockMenu;
 import village.automation.mod.menu.BeekeeperBlockMenu;
+import village.automation.mod.menu.ButcherBlockMenu;
 import village.automation.mod.menu.BrewingBlockMenu;
 import village.automation.mod.menu.CookingBlockMenu;
 import village.automation.mod.menu.CourierMenu;
@@ -259,6 +262,19 @@ public class VillageMod {
             MENU_TYPES.register("beekeeper_menu",
                     () -> IMenuTypeExtension.create(BeekeeperBlockMenu::new));
 
+    // ── Butcher Block ─────────────────────────────────────────────────────────
+    public static final DeferredBlock<ButcherBlock> BUTCHER_BLOCK = BLOCKS.register("butcher_block",
+            () -> new ButcherBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.WOOD).strength(2.5f).requiresCorrectToolForDrops()));
+    public static final DeferredItem<BlockItem> BUTCHER_BLOCK_ITEM =
+            ITEMS.registerSimpleBlockItem("butcher_block", BUTCHER_BLOCK);
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ButcherBlockEntity>> BUTCHER_BE =
+            BLOCK_ENTITY_TYPES.register("butcher_block",
+                    () -> BlockEntityType.Builder.of(ButcherBlockEntity::new, BUTCHER_BLOCK.get()).build(null));
+    public static final DeferredHolder<MenuType<?>, MenuType<ButcherBlockMenu>> BUTCHER_MENU =
+            MENU_TYPES.register("butcher_menu",
+                    () -> IMenuTypeExtension.create(ButcherBlockMenu::new));
+
     // ── Brewing Block ────────────────────────────────────────────────────────
     public static final DeferredBlock<BrewingBlock> BREWING_BLOCK = BLOCKS.register("brewing_block",
             () -> new BrewingBlock(BlockBehaviour.Properties.of()
@@ -397,6 +413,7 @@ public class VillageMod {
                         output.accept(FISHING_BLOCK_ITEM.get());
                         output.accept(ANIMAL_PEN_ITEM.get());
                         output.accept(BEEKEEPER_BLOCK_ITEM.get());
+                        output.accept(BUTCHER_BLOCK_ITEM.get());
                         output.accept(COOKING_BLOCK_ITEM.get());
                         output.accept(SMITHING_BLOCK_ITEM.get());
                         output.accept(SMELTER_BLOCK_ITEM.get());
@@ -510,6 +527,14 @@ public class VillageMod {
                     if (side == net.minecraft.core.Direction.DOWN) return be.getOutputHandler();
                     return null;
                 }
+        );
+        // Butcher Block — hoppers below pull mob drops from the 9-slot output
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                BUTCHER_BE.get(),
+                (be, side) -> side == net.minecraft.core.Direction.DOWN
+                        ? be.getOutputHandler()
+                        : null
         );
     }
 
