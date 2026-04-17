@@ -29,7 +29,8 @@
       "Bash(copy \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\item\\\\villager_soul.png\" \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\soul_pumpkin.png\")",
       "Bash(cd /tmp)",
       "Bash(jar xf *)",
-      "Bash(del \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\java\\\\village\\\\automation\\\\mod\\\\client\\\\renderer\\\\layer\\\\SmithProfessionLayer.java\")"
+      "Bash(del \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\java\\\\village\\\\automation\\\\mod\\\\client\\\\renderer\\\\layer\\\\SmithProfessionLayer.java\")",
+      "Bash(grep -E '\\\\.java$|^d')"
     ]
   }
 }

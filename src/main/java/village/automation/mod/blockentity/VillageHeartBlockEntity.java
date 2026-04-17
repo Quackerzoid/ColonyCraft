@@ -56,10 +56,11 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     private String villageName = "";
 
     // Slot: wheat input (1 slot)
-    private final SimpleContainer inputContainer   = new SimpleContainer(1);
-    // Slots: village upgrades — index 0 = Tier I, 1 = Tier II, 2 = Tier III
-    // Items placed here are permanent (non-removeable) and stack their benefits.
-    private final SimpleContainer upgradeContainer = new SimpleContainer(3);
+    private final SimpleContainer inputContainer  = new SimpleContainer(1);
+    // Single consumable upgrade input slot — item is absorbed and appliedUpgrades advances
+    private final SimpleContainer upgradeInputSlot = new SimpleContainer(1);
+    // How many upgrade tiers have been consumed (0 = base, 3 = max)
+    private int appliedUpgrades = 0;
 
     private int storedWheat    = 0;
     private int consumeCooldown = 0;
@@ -96,7 +97,9 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     private int syncedWorkerCount = 0;
     private int syncedWorkerCap   = BASE_WORKER_CAP;
 
-    // ContainerData: index 0 = storedWheat, 1 = workerCount, 2 = workerCap, 3 = radius
+    // ContainerData: index 0 = storedWheat, 1 = workerCount, 2 = workerCap,
+    //                index 3 = radius (derived, read-only setter),
+    //                index 4 = appliedUpgrades (directly synced so client mayPlace works)
     public final ContainerData data = new ContainerData() {
         @Override public int get(int i) {
             return switch (i) {
@@ -104,24 +107,26 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
                 case 1 -> syncedWorkerCount;
                 case 2 -> syncedWorkerCap;
                 case 3 -> getRadius();
+                case 4 -> appliedUpgrades;
                 default -> 0;
             };
         }
         @Override public void set(int i, int v) {
             switch (i) {
-                case 0 -> storedWheat      = v;
+                case 0 -> storedWheat       = v;
                 case 1 -> syncedWorkerCount = v;
                 case 2 -> syncedWorkerCap   = v;
-                // index 3 (radius) is derived from the upgrade slot — read-only
+                // index 3 (radius) is derived — read-only
+                case 4 -> appliedUpgrades   = v;
             }
         }
-        @Override public int getCount() { return 4; }
+        @Override public int getCount() { return 5; }
     };
 
     public VillageHeartBlockEntity(BlockPos pos, BlockState state) {
         super(VillageMod.VILLAGE_HEART_BE.get(), pos, state);
         this.inputContainer.addListener(c -> this.setChanged());
-        this.upgradeContainer.addListener(c -> this.setChanged());
+        this.upgradeInputSlot.addListener(c -> this.setChanged());
     }
 
     // ── Ticker ───────────────────────────────────────────────────────────────
@@ -153,6 +158,21 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
                 be.storedWheat++;
                 be.consumeCooldown = 4;
                 be.setChanged();
+            }
+        }
+
+        // ── Consume upgrade item from input slot ──────────────────────────────
+        if (be.appliedUpgrades < 3) {
+            ItemStack upgStack = be.upgradeInputSlot.getItem(0);
+            if (!upgStack.isEmpty()) {
+                boolean ok = (be.appliedUpgrades == 0 && upgStack.is(VillageMod.VILLAGE_UPGRADE.get()))
+                          || (be.appliedUpgrades == 1 && upgStack.is(VillageMod.VILLAGE_UPGRADE_II.get()))
+                          || (be.appliedUpgrades == 2 && upgStack.is(VillageMod.VILLAGE_UPGRADE_III.get()));
+                if (ok) {
+                    be.upgradeInputSlot.setItem(0, ItemStack.EMPTY);
+                    be.appliedUpgrades++;
+                    be.setChanged();
+                }
             }
         }
 
@@ -246,22 +266,17 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
      * in the menu slots), so this naturally covers base → Tier 1 → Tier 2 → Tier 3.
      */
     public int getWorkerCap() {
-        int cap = BASE_WORKER_CAP;
-        if (!upgradeContainer.getItem(0).isEmpty()) cap = TIER1_WORKER_CAP;
-        if (!upgradeContainer.getItem(1).isEmpty()) cap = TIER2_WORKER_CAP;
-        if (!upgradeContainer.getItem(2).isEmpty()) cap = TIER3_WORKER_CAP;
-        return cap;
+        if (appliedUpgrades >= 3) return TIER3_WORKER_CAP;
+        if (appliedUpgrades >= 2) return TIER2_WORKER_CAP;
+        if (appliedUpgrades >= 1) return TIER1_WORKER_CAP;
+        return BASE_WORKER_CAP;
     }
 
-    /**
-     * Returns the territory radius by summing the contribution of every applied upgrade.
-     */
     public int getRadius() {
-        int radius = BASE_RADIUS;
-        if (!upgradeContainer.getItem(0).isEmpty()) radius = TIER1_RADIUS;
-        if (!upgradeContainer.getItem(1).isEmpty()) radius = TIER2_RADIUS;
-        if (!upgradeContainer.getItem(2).isEmpty()) radius = TIER3_RADIUS;
-        return radius;
+        if (appliedUpgrades >= 3) return TIER3_RADIUS;
+        if (appliedUpgrades >= 2) return TIER2_RADIUS;
+        if (appliedUpgrades >= 1) return TIER1_RADIUS;
+        return BASE_RADIUS;
     }
 
     // ── Territory scan ────────────────────────────────────────────────────────
@@ -481,8 +496,9 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         this.setChanged();
     }
 
-    public SimpleContainer getInputContainer()   { return inputContainer;   }
-    public SimpleContainer getUpgradeContainer() { return upgradeContainer; }
+    public SimpleContainer getInputContainer()   { return inputContainer;    }
+    public SimpleContainer getUpgradeInputSlot() { return upgradeInputSlot; }
+    public Set<UUID> getCourierUUIDs()           { return Collections.unmodifiableSet(courierUUIDs); }
 
     // ── MenuProvider ──────────────────────────────────────────────────────────
 
@@ -507,11 +523,10 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             tag.put("Input", inputStack.save(registries));
         }
 
-        for (int i = 0; i < 3; i++) {
-            ItemStack upgradeStack = this.upgradeContainer.getItem(i);
-            if (!upgradeStack.isEmpty()) {
-                tag.put("Upgrade" + i, upgradeStack.save(registries));
-            }
+        tag.putInt("AppliedUpgrades", this.appliedUpgrades);
+        ItemStack upgInputStack = this.upgradeInputSlot.getItem(0);
+        if (!upgInputStack.isEmpty()) {
+            tag.put("UpgradeInput", upgInputStack.save(registries));
         }
 
         tag.putString("VillageName",   this.villageName);
@@ -571,15 +586,20 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         if (tag.contains("Input")) {
             this.inputContainer.setItem(0, ItemStack.parseOptional(registries, tag.getCompound("Input")));
         }
-        // Load new per-slot keys; migrate legacy single "Upgrade" key into slot 0
-        if (tag.contains("Upgrade")) {
-            this.upgradeContainer.setItem(0, ItemStack.parseOptional(registries, tag.getCompound("Upgrade")));
-        }
-        for (int i = 0; i < 3; i++) {
-            String key = "Upgrade" + i;
-            if (tag.contains(key)) {
-                this.upgradeContainer.setItem(i, ItemStack.parseOptional(registries, tag.getCompound(key)));
+        // Load upgrade progress; migrate from legacy per-slot saves
+        if (tag.contains("AppliedUpgrades")) {
+            this.appliedUpgrades = tag.getInt("AppliedUpgrades");
+        } else {
+            // Legacy migration: count how many upgrade slots were filled
+            int count = 0;
+            if (tag.contains("Upgrade")) count = 1;
+            for (int i = 0; i < 3; i++) {
+                if (tag.contains("Upgrade" + i)) count = i + 1;
             }
+            this.appliedUpgrades = count;
+        }
+        if (tag.contains("UpgradeInput")) {
+            this.upgradeInputSlot.setItem(0, ItemStack.parseOptional(registries, tag.getCompound("UpgradeInput")));
         }
 
         this.villageName    = tag.getString("VillageName");

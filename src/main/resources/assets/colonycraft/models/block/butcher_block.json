@@ -1,0 +1,198 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "wood":     "minecraft:block/stripped_oak_log",
+    "topwood":  "minecraft:block/stripped_oak_log_top",
+    "leg":      "minecraft:block/dark_oak_planks",
+    "iron":     "minecraft:block/iron_block",
+    "handle":   "minecraft:block/dark_oak_planks",
+    "blood":    "minecraft:block/nether_wart_block",
+    "particle": "minecraft:block/stripped_oak_log"
+  },
+  "elements": [
+
+    {
+      "comment": "Leg — north-west corner post",
+      "from": [1, 0, 1], "to": [3, 9, 3],
+      "faces": {
+        "north": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "east":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "south": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "west":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "up":    {"uv": [0, 0, 2, 2], "texture": "#leg"},
+        "down":  {"uv": [0, 0, 2, 2], "texture": "#leg", "cullface": "down"}
+      }
+    },
+
+    {
+      "comment": "Leg — north-east corner post",
+      "from": [13, 0, 1], "to": [15, 9, 3],
+      "faces": {
+        "north": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "east":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "south": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "west":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "up":    {"uv": [0, 0, 2, 2], "texture": "#leg"},
+        "down":  {"uv": [0, 0, 2, 2], "texture": "#leg", "cullface": "down"}
+      }
+    },
+
+    {
+      "comment": "Leg — south-west corner post",
+      "from": [1, 0, 13], "to": [3, 9, 15],
+      "faces": {
+        "north": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "east":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "south": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "west":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "up":    {"uv": [0, 0, 2, 2], "texture": "#leg"},
+        "down":  {"uv": [0, 0, 2, 2], "texture": "#leg", "cullface": "down"}
+      }
+    },
+
+    {
+      "comment": "Leg — south-east corner post",
+      "from": [13, 0, 13], "to": [15, 9, 15],
+      "faces": {
+        "north": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "east":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "south": {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "west":  {"uv": [0, 0, 2, 9], "texture": "#leg"},
+        "up":    {"uv": [0, 0, 2, 2], "texture": "#leg"},
+        "down":  {"uv": [0, 0, 2, 2], "texture": "#leg", "cullface": "down"}
+      }
+    },
+
+    {
+      "comment": "Cross-brace — front (south side of block)",
+      "from": [3, 3, 1], "to": [13, 5, 3],
+      "faces": {
+        "north": {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "east":  {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "south": {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "west":  {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "up":    {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "down":  {"uv": [0, 0, 10, 2], "texture": "#leg"}
+      }
+    },
+
+    {
+      "comment": "Cross-brace — back (north side of block)",
+      "from": [3, 3, 13], "to": [13, 5, 15],
+      "faces": {
+        "north": {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "east":  {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "south": {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "west":  {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "up":    {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "down":  {"uv": [0, 0, 10, 2], "texture": "#leg"}
+      }
+    },
+
+    {
+      "comment": "Cross-brace — left (west side of block)",
+      "from": [1, 3, 3], "to": [3, 5, 13],
+      "faces": {
+        "north": {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "east":  {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "south": {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "west":  {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "up":    {"uv": [0, 0,  2, 10], "texture": "#leg"},
+        "down":  {"uv": [0, 0,  2, 10], "texture": "#leg"}
+      }
+    },
+
+    {
+      "comment": "Cross-brace — right (east side of block)",
+      "from": [13, 3, 3], "to": [15, 5, 13],
+      "faces": {
+        "north": {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "east":  {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "south": {"uv": [0, 0,  2, 2], "texture": "#leg"},
+        "west":  {"uv": [0, 0, 10, 2], "texture": "#leg"},
+        "up":    {"uv": [0, 0,  2, 10], "texture": "#leg"},
+        "down":  {"uv": [0, 0,  2, 10], "texture": "#leg"}
+      }
+    },
+
+    {
+      "comment": "Table top — thick stripped-oak chopping block",
+      "from": [0, 9, 0], "to": [16, 13, 16],
+      "faces": {
+        "north": {"uv": [0, 0, 16, 4], "texture": "#wood", "cullface": "north"},
+        "east":  {"uv": [0, 0, 16, 4], "texture": "#wood", "cullface": "east"},
+        "south": {"uv": [0, 0, 16, 4], "texture": "#wood", "cullface": "south"},
+        "west":  {"uv": [0, 0, 16, 4], "texture": "#wood", "cullface": "west"},
+        "up":    {"uv": [0, 0, 16, 16], "texture": "#topwood"},
+        "down":  {"uv": [0, 0, 16, 16], "texture": "#topwood"}
+      }
+    },
+
+    {
+      "comment": "Blood pool — main dark-red puddle on the left portion of the surface",
+      "from": [1, 13, 2], "to": [10, 14, 12],
+      "faces": {
+        "north": {"uv": [0, 0,  9, 1], "texture": "#blood"},
+        "east":  {"uv": [0, 0, 10, 1], "texture": "#blood"},
+        "south": {"uv": [0, 0,  9, 1], "texture": "#blood"},
+        "west":  {"uv": [0, 0, 10, 1], "texture": "#blood"},
+        "up":    {"uv": [0, 0,  9, 10], "texture": "#blood"}
+      }
+    },
+
+    {
+      "comment": "Blood splash — secondary splatter near the south-east corner",
+      "from": [10, 13, 9], "to": [15, 14, 14],
+      "faces": {
+        "north": {"uv": [0, 0, 5, 1], "texture": "#blood"},
+        "east":  {"uv": [0, 0, 5, 1], "texture": "#blood"},
+        "south": {"uv": [0, 0, 5, 1], "texture": "#blood"},
+        "west":  {"uv": [0, 0, 5, 1], "texture": "#blood"},
+        "up":    {"uv": [6, 6, 11, 11], "texture": "#blood"}
+      }
+    },
+
+    {
+      "comment": "Cleaver blade — narrow iron rectangle, 3px embedded, 4px proud of table",
+      "from": [7.5, 10, 7.5], "to": [10.5, 17, 8.5],
+      "rotation": {"angle": -22.5, "axis": "z", "origin": [9, 13, 8]},
+      "faces": {
+        "north": {"uv": [0, 0, 3, 7], "texture": "#iron"},
+        "south": {"uv": [0, 0, 3, 7], "texture": "#iron"},
+        "east":  {"uv": [0, 0, 1, 7], "texture": "#iron"},
+        "west":  {"uv": [0, 0, 1, 7], "texture": "#iron"},
+        "up":    {"uv": [0, 0, 3, 1], "texture": "#iron"},
+        "down":  {"uv": [0, 0, 3, 1], "texture": "#iron"}
+      }
+    },
+
+    {
+      "comment": "Cleaver guard — iron crosspiece between blade and handle",
+      "from": [6.5, 15.5, 7], "to": [11.5, 17.5, 9],
+      "rotation": {"angle": -22.5, "axis": "z", "origin": [9, 13, 8]},
+      "faces": {
+        "north": {"uv": [0, 0, 5, 2], "texture": "#iron"},
+        "south": {"uv": [0, 0, 5, 2], "texture": "#iron"},
+        "east":  {"uv": [0, 0, 2, 2], "texture": "#iron"},
+        "west":  {"uv": [0, 0, 2, 2], "texture": "#iron"},
+        "up":    {"uv": [0, 0, 5, 2], "texture": "#iron"},
+        "down":  {"uv": [0, 0, 5, 2], "texture": "#iron"}
+      }
+    },
+
+    {
+      "comment": "Cleaver handle — dark oak grip above the guard",
+      "from": [7.5, 17, 7.5], "to": [10.5, 21, 8.5],
+      "rotation": {"angle": -22.5, "axis": "z", "origin": [9, 13, 8]},
+      "faces": {
+        "north": {"uv": [0, 0, 3, 4], "texture": "#handle"},
+        "south": {"uv": [0, 0, 3, 4], "texture": "#handle"},
+        "east":  {"uv": [0, 0, 1, 4], "texture": "#handle"},
+        "west":  {"uv": [0, 0, 1, 4], "texture": "#handle"},
+        "up":    {"uv": [0, 0, 3, 1], "texture": "#handle"},
+        "down":  {"uv": [0, 0, 3, 1], "texture": "#handle"}
+      }
+    }
+
+  ]
+}

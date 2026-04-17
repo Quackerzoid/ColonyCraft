@@ -6,335 +6,414 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.neoforged.neoforge.network.PacketDistributor;
 import village.automation.mod.VillageMod;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.menu.VillageHeartMenu;
 import village.automation.mod.network.SetVillageNamePacket;
-
-import village.automation.mod.ItemRequest;
+import village.automation.mod.network.SyncGolemsPacket;
 
 import java.util.List;
+import java.util.Optional;
 
 public class VillageHeartScreen extends AbstractContainerScreen<VillageHeartMenu> {
 
-    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(
-            VillageMod.MODID, "textures/gui/village_heart_gui.png");
+    // ── Image dimensions ─────────────────────────────────────────────────────
+    //   Left  sidebar  x =   0 ..  76   (width  76)
+    //   Separator      x =  76 ..  80   (width   4)
+    //   Main  panel    x =  80 .. 256   (width 176)
+    //   Separator      x = 256 .. 260   (width   4)
+    //   Right sidebar  x = 260 .. 350   (width  90)
+    private static final int IMG_W   = 350;
+    private static final int IMG_H   = 222;   // increased for comfortable spacing
+    private static final int LEFT_W  =  76;
+    private static final int MAIN_X  =  80;
+    private static final int RIGHT_X = 260;
 
-    // ── Vertical wheat progress bar ───────────────────────────────────────────
-    // Coords are relative to the panel origin (leftPos / topPos).
-    // The fill strip grows upward from the bottom of this area.
-    private static final int VBAR_X =  29;   // left edge of the fill area
-    private static final int VBAR_Y =   4;   // top  of the fill area
-    private static final int VBAR_W =  12;   // width
-    private static final int VBAR_H =  60;   // height (full = 16/16 wheat)
+    // ── Colours (full dark mode) ─────────────────────────────────────────────
+    private static final int COL_SIDEBAR    = 0xFF_1A1A1A;   // dark sidebars
+    private static final int COL_SEP        = 0xFF_0D0D0D;   // near-black separator lines
+    private static final int COL_PANEL      = 0xFF_252525;   // dark main panel
+    private static final int COL_DIVIDER    = 0xFF_3A3A3A;   // subtle divider on dark panel
+    private static final int COL_DARK_DIV   = 0xFF_3A3A3A;   // divider on sidebars
+    private static final int COL_ACCENT     = 0xFF_55DD55;   // village green (unchanged)
+    private static final int COL_LABEL      = 0xFF_AAAAAA;   // light-grey label on dark panel
+    private static final int COL_LABEL_SB   = 0xFF_999999;   // label on dark sidebar
+    private static final int COL_VALUE      = 0xFF_FFFFFF;   // white values
+    private static final int COL_WHEAT_FILL = 0xFF_FFB800;   // amber wheat bar (unchanged)
+    private static final int COL_SLOT_BDR   = 0xFF_505050;   // slot border — visible on dark bg
+    private static final int COL_SLOT_IN    = 0xFF_141414;   // very dark slot interior
 
-    // ── Upgrade slot column ───────────────────────────────────────────────────
-    // Three slots stacked vertically; X is the item-area left edge (slot.x).
-    private static final int   UPGRADE_SLOT_X = 52;
-    private static final int[] UPGRADE_SLOT_Y = {5, 25, 45};  // slot.y for I / II / III
+    // ── Main-panel slot positions (image-relative, must match menu) ──────────
+    private static final int UPGRADE_X = 88;   // slot 0 x
+    private static final int UPGRADE_Y = 32;   // slot 0 y
+    private static final int WHEAT_X   = 88;   // slot 1 x
+    private static final int WHEAT_Y   = 74;   // slot 1 y
 
-    // ── Sidebar panel ─────────────────────────────────────────────────────────
-    // Positioned so its left edge overlaps the main panel by 4 px, creating the
-    // "pokes out" look.  All coords relative to leftPos / topPos.
-    private static final int SIDEBAR_X =  172;
-    private static final int SIDEBAR_Y =   20;
-    private static final int SIDEBAR_W =   74;
-    private static final int SIDEBAR_H =   76;   // base height (name + radius + workers)
+    // Player inventory (slots 2-28): x=87+col*18, y=114+row*18
+    private static final int INV_X  = 87;
+    private static final int INV_Y  = 114;   // first row top
 
-    // Requests section below the base sidebar (up to MAX_VISIBLE_REQUESTS shown)
-    private static final int MAX_VISIBLE_REQUESTS = 5;
-    private static final int REQUEST_ENTRY_H      = 11;  // px per request row
-    private static final int REQUEST_SECTION_H    = 18 + MAX_VISIBLE_REQUESTS * REQUEST_ENTRY_H;
+    // Hotbar (slots 29-37): x=87+col*18, y=170
+    private static final int HOT_Y  = 170;
 
-    // ── Village naming overlay ────────────────────────────────────────────────
+    // ── Wheat bar (image-relative) ───────────────────────────────────────────
+    // Sits to the right of the wheat slot; vertically centred with it
+    // Slot occupies y=74..90  →  bar centred at y=82  →  y=77..87
+    private static final int BAR_X = 112;   // WHEAT_X + 16 + 8
+    private static final int BAR_Y =  77;
+    private static final int BAR_W = 126;   // ends at 238 < 256 (main panel right)
+    private static final int BAR_H =  10;
+
+    // ── Main-panel divider Y positions ──────────────────────────────────────
+    // Below title:              y = 14
+    // Below upgrade section:    y = 56   (slot bottom = 32+16=48, +8 gap)
+    // Below wheat section:      y = 96   (slot bottom = 74+16=90, +6 gap)
+    private static final int DIV_TITLE   = 14;
+    private static final int DIV_UPGRADE = 56;
+    private static final int DIV_WHEAT   = 96;
+
+    // ── Left-sidebar golem list ──────────────────────────────────────────────
+    private static final int GOLEM_TOP = 18;   // first entry y (image-relative)
+    private static final int GOLEM_H   = 20;   // px per entry (name + status)
+    private int golemScroll = 0;
+
+    // ── Naming overlay ───────────────────────────────────────────────────────
     private boolean namingMode = false;
-    private EditBox villageNameField;
-    private Button  confirmButton;
+    private EditBox nameField;
+    private Button  confirmBtn;
 
-    public VillageHeartScreen(VillageHeartMenu menu, Inventory playerInventory, Component title) {
-        super(menu, playerInventory, title);
-        this.imageWidth  = 176;
-        this.imageHeight = 166;
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public VillageHeartScreen(VillageHeartMenu menu, Inventory inv, Component title) {
+        super(menu, inv, title);
+        imageWidth  = IMG_W;
+        imageHeight = IMG_H;
     }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     @Override
     protected void init() {
         super.init();
-
         namingMode = menu.getVillageName().isEmpty();
 
-        int fieldW = 160, fieldH = 20;
-        int fieldX = this.width / 2 - fieldW / 2;
-        int fieldY = this.height / 2 - 16;
+        int fw = 160, fh = 20;
+        int fx = width / 2 - fw / 2;
+        int fy = height / 2 - 16;
 
-        villageNameField = new EditBox(this.font, fieldX, fieldY, fieldW, fieldH,
-                Component.literal("Village name"));
-        villageNameField.setMaxLength(VillageHeartBlockEntity.MAX_NAME_LENGTH);
-        villageNameField.setVisible(namingMode);
-        villageNameField.setFocused(namingMode);
-        this.addRenderableWidget(villageNameField);
+        nameField = new EditBox(font, fx, fy, fw, fh, Component.literal("Village name"));
+        nameField.setMaxLength(VillageHeartBlockEntity.MAX_NAME_LENGTH);
+        nameField.setVisible(namingMode);
+        nameField.setFocused(namingMode);
+        addRenderableWidget(nameField);
 
-        int btnW = 80;
-        confirmButton = Button.builder(Component.literal("Confirm"), btn -> confirmName())
-                .bounds(this.width / 2 - btnW / 2, fieldY + fieldH + 6, btnW, 20)
-                .build();
-        confirmButton.visible = namingMode;
-        this.addRenderableWidget(confirmButton);
+        confirmBtn = Button.builder(Component.literal("Confirm"), b -> confirmName())
+                .bounds(width / 2 - 40, fy + fh + 6, 80, 20).build();
+        confirmBtn.visible = namingMode;
+        addRenderableWidget(confirmBtn);
     }
 
-    // ── Rendering ─────────────────────────────────────────────────────────────
+    // ── Background (absolute screen coords) ──────────────────────────────────
 
-    /**
-     * Draws: main panel texture, vertical bar gold fill, sidebar background,
-     * and dark overlay tints over upgrade slots that are not yet unlockable.
-     *
-     * <p>Note: {@code renderBg} is called by the parent WITHOUT a pose translation,
-     * so every position here is absolute screen coords (leftPos + X, topPos + Y).
-     */
     @Override
-    protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) {
+    protected void renderBg(GuiGraphics g, float pt, int mx, int my) {
+        int lx = leftPos, ty = topPos;
 
-        // ── Main panel texture ────────────────────────────────────────────────
-        g.blit(TEXTURE, this.leftPos, this.topPos, 0, 0,
-                this.imageWidth, this.imageHeight, 256, 256);
+        // ── Left sidebar ─────────────────────────────────────────────────────
+        g.fill(lx,          ty, lx + LEFT_W,  ty + IMG_H, COL_SIDEBAR);
+        g.fill(lx + LEFT_W, ty, lx + MAIN_X,  ty + IMG_H, COL_SEP);
+        // Header divider
+        g.fill(lx + 4, ty + DIV_TITLE, lx + LEFT_W - 4, ty + DIV_TITLE + 1, COL_DARK_DIV);
 
-        // ── Vertical progress bar fill (gold, grows upward) ───────────────────
-        int stored = this.menu.getStoredWheat();
-        int fillH  = (int)(stored / (float) VillageHeartBlockEntity.MAX_WHEAT * VBAR_H);
-        if (fillH > 0) {
-            g.fill(this.leftPos + VBAR_X,
-                   this.topPos  + VBAR_Y + VBAR_H - fillH,
-                   this.leftPos + VBAR_X + VBAR_W,
-                   this.topPos  + VBAR_Y + VBAR_H,
-                   0xFF_FFB800);
+        // ── Main panel ───────────────────────────────────────────────────────
+        int px = lx + MAIN_X;
+        int pr = lx + RIGHT_X - 4;   // panel right edge (before separator)
+        g.fill(px, ty, pr, ty + IMG_H, COL_PANEL);
+        // Subtle 1px top highlight and bottom shadow (dark-mode friendly)
+        g.fill(px, ty,             pr, ty + 1,       0xFF_383838);
+        g.fill(px, ty + IMG_H - 1, pr, ty + IMG_H,   0xFF_111111);
+
+        // Separators around main panel
+        g.fill(pr,         ty, lx + RIGHT_X, ty + IMG_H, COL_SEP);
+
+        // ── Main panel dividers ──────────────────────────────────────────────
+        g.fill(px + 4, ty + DIV_TITLE,   pr - 4, ty + DIV_TITLE   + 1, COL_DIVIDER);
+        g.fill(px + 4, ty + DIV_UPGRADE, pr - 4, ty + DIV_UPGRADE + 1, COL_DIVIDER);
+        g.fill(px + 4, ty + DIV_WHEAT,   pr - 4, ty + DIV_WHEAT   + 1, COL_DIVIDER);
+
+        // ── All slot backgrounds ─────────────────────────────────────────────
+        // Block slots
+        drawSlot(g, lx + UPGRADE_X, ty + UPGRADE_Y);
+        drawSlot(g, lx + WHEAT_X,   ty + WHEAT_Y);
+
+        // Player inventory (3 × 9)
+        for (int row = 0; row < 3; row++)
+            for (int col = 0; col < 9; col++)
+                drawSlot(g, lx + INV_X + col * 18, ty + INV_Y + row * 18);
+
+        // Thin separator line in the 2-pixel gap between inventory rows and hotbar
+        g.fill(lx + INV_X, ty + HOT_Y - 2, lx + INV_X + 9 * 18 - 2, ty + HOT_Y - 1, 0xFF_3A3A3A);
+
+        // Hotbar (1 × 9)
+        for (int col = 0; col < 9; col++)
+            drawSlot(g, lx + INV_X + col * 18, ty + HOT_Y);
+
+        // ── Wheat bar ────────────────────────────────────────────────────────
+        int bx = lx + BAR_X, by = ty + BAR_Y;
+        // Track (border + darker-than-panel fill)
+        g.fill(bx - 1, by - 1, bx + BAR_W + 1, by + BAR_H + 1, 0xFF_3A3A3A);
+        g.fill(bx,     by,     bx + BAR_W,     by + BAR_H,      0xFF_111111);
+        // Fill
+        int stored = menu.getStoredWheat();
+        int fillW  = (int)(stored / (float) VillageHeartBlockEntity.MAX_WHEAT * BAR_W);
+        if (fillW > 0) {
+            g.fill(bx, by, bx + fillW, by + BAR_H, COL_WHEAT_FILL);
+            g.fill(bx, by, bx + fillW, by + 2,     0x44FFFFFF);   // shine stripe
         }
 
-        // ── Sidebar background (base section + requests extension) ───────────
-        int sx      = this.leftPos + SIDEBAR_X;
-        int sy      = this.topPos  + SIDEBAR_Y;
-        int totalH  = SIDEBAR_H + REQUEST_SECTION_H;
-        // Panel fill — same grey as the main panel
-        g.fill(sx, sy, sx + SIDEBAR_W, sy + totalH, 0xFF_C6C6C6);
-        // Top shadow border
-        g.fill(sx + 4, sy,                  sx + SIDEBAR_W,     sy + 1,             0xFF_555555);
-        // Right highlight border
-        g.fill(sx + SIDEBAR_W - 1, sy,      sx + SIDEBAR_W,     sy + totalH,        0xFF_FFFFFF);
-        // Bottom highlight border
-        g.fill(sx + 4, sy + totalH - 1,     sx + SIDEBAR_W,     sy + totalH,        0xFF_FFFFFF);
-        // Divider under the village name
-        g.fill(sx + 4, sy + 17,             sx + SIDEBAR_W - 1, sy + 18,            0xFF_909090);
-        // Divider between Radius and Workers
-        g.fill(sx + 4, sy + 45,             sx + SIDEBAR_W - 1, sy + 46,            0xFF_909090);
-        // Divider above the requests section
-        g.fill(sx + 4, sy + SIDEBAR_H,      sx + SIDEBAR_W - 1, sy + SIDEBAR_H + 1, 0xFF_909090);
+        // ── Right sidebar ────────────────────────────────────────────────────
+        int rsx = lx + RIGHT_X;
+        g.fill(rsx, ty, lx + IMG_W, ty + IMG_H, COL_SIDEBAR);
+        // Right sidebar dividers (3 of them — no 4th that would cut through tier text)
+        g.fill(rsx + 4, ty + 14, lx + IMG_W - 4, ty + 15, COL_DARK_DIV);
+        g.fill(rsx + 4, ty + 38, lx + IMG_W - 4, ty + 39, COL_DARK_DIV);
+        g.fill(rsx + 4, ty + 62, lx + IMG_W - 4, ty + 63, COL_DARK_DIV);
+    }
 
-        // ── Locked upgrade slot overlays ──────────────────────────────────────
-        // Slot I is always insertable; II requires I; III requires II.
-        int radius = this.menu.getRadius();
-        boolean[] unlocked = {
-            true,
-            radius > VillageHeartBlockEntity.BASE_RADIUS,
-            radius > VillageHeartBlockEntity.TIER1_RADIUS
-        };
-        for (int i = 0; i < 3; i++) {
-            if (!unlocked[i]) {
-                g.fill(this.leftPos + UPGRADE_SLOT_X,
-                       this.topPos  + UPGRADE_SLOT_Y[i],
-                       this.leftPos + UPGRADE_SLOT_X + 16,
-                       this.topPos  + UPGRADE_SLOT_Y[i] + 16,
-                       0x99000000);
+    /** Dark-mode recessed slot: medium border, very dark fill, subtle highlights. */
+    private void drawSlot(GuiGraphics g, int x, int y) {
+        // Outer border
+        g.fill(x - 1, y - 1, x + 17, y + 17, COL_SLOT_BDR);
+        // Dark interior
+        g.fill(x,     y,     x + 16, y + 16,  COL_SLOT_IN);
+        // Subtle bottom-right edge highlight (gives faint depth without looking white on dark)
+        g.fill(x - 1, y + 16, x + 17, y + 17, 0xFF_3A3A3A);
+        g.fill(x + 16, y - 1, x + 17, y + 17, 0xFF_3A3A3A);
+    }
+
+    // ── Labels (image-relative coords — translated by leftPos, topPos) ────────
+
+    @Override
+    protected void renderLabels(GuiGraphics g, int mx, int my) {
+        // Suppress default title and "Inventory" text — we draw our own.
+
+        int tier = menu.getAppliedUpgrades();
+
+        // ════════════════ LEFT SIDEBAR ════════════════
+        g.drawString(font, "Golems", 5, 4, COL_ACCENT, false);
+
+        List<SyncGolemsPacket.GolemInfo> golemList = menu.getGolems();
+        int maxVis  = (IMG_H - GOLEM_TOP) / GOLEM_H;
+        int start   = golemScroll;
+        int end     = Math.min(golemList.size(), start + maxVis);
+        int maxTextW = LEFT_W - 8;
+
+        if (golemList.isEmpty()) {
+            g.drawString(font, "No golems yet", 4, GOLEM_TOP, 0xFF_555555, false);
+        } else {
+            for (int i = start; i < end; i++) {
+                SyncGolemsPacket.GolemInfo gi = golemList.get(i);
+                int ey = GOLEM_TOP + (i - start) * GOLEM_H;
+
+                String name = gi.name();
+                if (font.width(name) > maxTextW)
+                    name = font.plainSubstrByWidth(name, maxTextW - font.width("..")) + "..";
+                g.drawString(font, name, 4, ey, 0xFF_DDDDDD, false);
+
+                int sc = gi.status().equalsIgnoreCase("Active") ? 0xFF_55FF55 : 0xFF_777777;
+                g.drawString(font, gi.status(), 4, ey + 10, sc, false);
+            }
+            if (golemList.size() > maxVis) {
+                int rem = golemList.size() - (start + maxVis);
+                if (rem > 0)
+                    g.drawString(font, "+" + rem + " more", 4, IMG_H - 10, 0xFF_555555, false);
             }
         }
-    }
 
-    /**
-     * Draws in-panel labels.
-     *
-     * <p>Note: the parent translates the pose by (leftPos, topPos) before calling
-     * this method, so all coordinates here are panel-relative.
-     * We deliberately do NOT call {@code super.renderLabels} to suppress the
-     * default "Village Heart" title.
-     */
-    @Override
-    protected void renderLabels(GuiGraphics g, int mouseX, int mouseY) {
+        // ════════════════ MAIN PANEL ════════════════
+        int mp = MAIN_X;   // 80
 
-        // "Inventory" label above the player inventory grid
-        g.drawString(this.font, "Inventory", 8, this.imageHeight - 94, 0x404040, false);
+        // Title
+        g.drawString(font, "Village Heart", mp + 6, 4, COL_ACCENT, false);
 
-        // Tier labels (I / II / III) to the right of the upgrade slot column
-        int radius = this.menu.getRadius();
-        boolean[] applied = {
-            radius > VillageHeartBlockEntity.BASE_RADIUS,
-            radius > VillageHeartBlockEntity.TIER1_RADIUS,
-            radius > VillageHeartBlockEntity.TIER2_RADIUS
-        };
-        String[] tiers  = {"I", "II", "III"};
-        int[]    labelY = {11,  31,   51};    // vertically centred alongside each slot
+        // ── Upgrade section (y=DIV_TITLE+4 .. DIV_UPGRADE-1) ─────────────────
+        int us = DIV_TITLE + 4;   // = 18
+
+        String[] tNames  = {"Base",   "Tier I", "Tier II", "Tier III"};
+        int[]    tColors = {0xFF_AAAAAA, 0xFF_88CCFF, 0xFF_88CCFF, 0xFF_FFDD00};
+
+        // Section header — sits above the slot (slot border begins at y=31, text ends at y=27)
+        g.drawString(font, "Upgrade", mp + 6, us, COL_LABEL, false);
+
+        // All text to the RIGHT of the upgrade slot so nothing overlaps the slot box.
+        // Slot right edge = UPGRADE_X + 16 = 104.  8px gap → text starts at 112.
+        // Available width to the main-panel right edge = (RIGHT_X - 4) - 112 = 144 px.
+        int textX   = UPGRADE_X + 16 + 8;          // 112
+        int maxTxtW = (RIGHT_X - 4) - textX;       // 144
+
+        // Line 1 (y=30): current applied tier
+        String appliedLine = "Applied: " + tNames[tier];
+        g.drawString(font, appliedLine, textX, UPGRADE_Y - 2, tColors[tier], false);   // y=30
+
+        // Line 2 (y=42): next-tier hint or max-tier notice
+        if (tier < 3) {
+            String[] hintItems = {"Village Upgrade I", "Village Upgrade II", "Village Upgrade III"};
+            String hint = "> Insert: " + hintItems[tier];
+            if (font.width(hint) > maxTxtW)
+                hint = font.plainSubstrByWidth(hint, maxTxtW - font.width("..")) + "..";
+            g.drawString(font, hint, textX, UPGRADE_Y + 10, 0xFF_777777, false);       // y=42
+        } else {
+            g.drawString(font, "All tiers applied!", textX, UPGRADE_Y + 10, 0xFF_FFDD00, false);
+        }
+
+        // ── Wheat section (y=DIV_UPGRADE+4 .. DIV_WHEAT-1) ───────────────────
+        int ws = DIV_UPGRADE + 4;   // = 60
+
+        String wheatLbl = "Wheat Supply";
+        g.drawString(font, wheatLbl, mp + 6, ws, COL_LABEL, false);
+        // Count appended on the same line to the right of the label
+        String wheatCnt = menu.getStoredWheat() + " / " + VillageHeartBlockEntity.MAX_WHEAT;
+        g.drawString(font, wheatCnt, mp + 6 + font.width(wheatLbl) + 6, ws, COL_VALUE, false);
+
+        // ── Inventory section ─────────────────────────────────────────────────
+        g.drawString(font, "Inventory", mp + 6, DIV_WHEAT + 4, COL_LABEL, false);
+
+        // ════════════════ RIGHT SIDEBAR ════════════════
+        int rp = RIGHT_X + 5;   // left edge of text in right sidebar
+
+        // Village name (clickable — tooltip shown in render())
+        String vname = menu.getVillageName();
+        if (vname.isEmpty()) vname = "Unnamed";
+        int nameMaxW = IMG_W - RIGHT_X - 10;
+        if (font.width(vname) > nameMaxW)
+            vname = font.plainSubstrByWidth(vname, nameMaxW - font.width("..")) + "..";
+        g.drawString(font, vname, rp, 4, 0xFF_FFDD88, false);
+
+        // Workers (below first divider at y=14)
+        g.drawString(font, "Workers",  rp, 18, COL_LABEL_SB, false);
+        g.drawString(font, menu.getWorkerCount() + " / " + menu.getWorkerCap(),
+                     rp, 28, COL_VALUE, false);
+
+        // Radius (below second divider at y=38)
+        g.drawString(font, "Radius",   rp, 42, COL_LABEL_SB, false);
+        g.drawString(font, menu.getRadius() + " blocks", rp, 52, COL_VALUE, false);
+
+        // Upgrades (below third divider at y=62)
+        g.drawString(font, "Upgrades", rp, 66, COL_LABEL_SB, false);
+
+        // Coloured 5×5 square + tier name for each tier
+        String[] tLabels = {"Tier I", "Tier II", "Tier III"};
+        int[]    tYs     = {78, 90, 102};
         for (int i = 0; i < 3; i++) {
-            int color = applied[i] ? 0xFFD700 : 0x777777;   // gold if applied, grey if locked
-            g.drawString(this.font, tiers[i], UPGRADE_SLOT_X + 18, labelY[i], color, false);
+            boolean applied = tier > i;
+            int     iCol    = applied ? 0xFF_55FF55 : 0xFF_444444;
+            // 5×5 coloured indicator square, then tier name
+            // (renderLabels uses image-relative coords — pose already translated)
+            g.fill(rp, tYs[i], rp + 5, tYs[i] + 5, iCol);
+            g.drawString(font, tLabels[i], rp + 8, tYs[i], iCol, false);
         }
     }
 
-    @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        if (namingMode) {
-            // ── Naming overlay ────────────────────────────────────────────────
-            this.renderBackground(g, mouseX, mouseY, partialTick);
-            g.fill(0, 0, this.width, this.height, 0x88000000);
+    // ── Full render ───────────────────────────────────────────────────────────
 
+    @Override
+    public void render(GuiGraphics g, int mx, int my, float pt) {
+        if (namingMode) {
+            renderBackground(g, mx, my, pt);
+            g.fill(0, 0, width, height, 0x88000000);
             Component prompt = Component.literal("Enter a name for your village:");
-            g.drawString(this.font, prompt,
-                    this.width / 2 - this.font.width(prompt) / 2,
-                    villageNameField.getY() - this.font.lineHeight - 6,
-                    0xFFFFFF, true);
+            g.drawString(font, prompt,
+                    width / 2 - font.width(prompt) / 2,
+                    nameField.getY() - font.lineHeight - 6, 0xFFFFFF, true);
+            nameField.render(g, mx, my, pt);
+            confirmBtn.render(g, mx, my, pt);
+            return;
+        }
 
-            villageNameField.render(g, mouseX, mouseY, partialTick);
-            confirmButton.render(g, mouseX, mouseY, partialTick);
+        super.render(g, mx, my, pt);
+        renderTooltip(g, mx, my);
 
-        } else {
-            // ── Normal GUI ────────────────────────────────────────────────────
-            super.render(g, mouseX, mouseY, partialTick);
+        // Wheat bar tooltip
+        int bx = leftPos + BAR_X, by = topPos + BAR_Y;
+        if (mx >= bx && mx < bx + BAR_W && my >= by && my < by + BAR_H) {
+            g.renderTooltip(font,
+                    List.of(Component.literal(menu.getStoredWheat()
+                            + " / " + VillageHeartBlockEntity.MAX_WHEAT + " Bundles of Wheat")),
+                    Optional.empty(), mx, my);
+        }
 
-            // Sidebar text uses absolute screen coords (sidebar is outside the main panel)
-            drawSidebarContent(g);
-
-            // Standard item-slot tooltips
-            this.renderTooltip(g, mouseX, mouseY);
-
-            // ── Upgrade slot hover tooltips ───────────────────────────────────
-            int radius = this.menu.getRadius();
-            boolean[] upgradeApplied = {
-                radius > VillageHeartBlockEntity.BASE_RADIUS,
-                radius > VillageHeartBlockEntity.TIER1_RADIUS,
-                radius > VillageHeartBlockEntity.TIER2_RADIUS
-            };
-            String[] upgradeNames = {
-                "Village Upgrade I", "Village Upgrade II", "Village Upgrade III"
-            };
-            for (int i = 0; i < 3; i++) {
-                int slotSx = this.leftPos + UPGRADE_SLOT_X;
-                int slotSy = this.topPos  + UPGRADE_SLOT_Y[i];
-                if (mouseX >= slotSx && mouseX < slotSx + 16
-                        && mouseY >= slotSy && mouseY < slotSy + 16) {
-                    List<Component> tip;
-                    if (upgradeApplied[i]) {
-                        tip = List.of(
-                            Component.literal(upgradeNames[i]).withStyle(ChatFormatting.GOLD),
-                            Component.literal("Applied").withStyle(ChatFormatting.GREEN));
-                    } else if (i == 0 || upgradeApplied[i - 1]) {
-                        tip = List.of(
-                            Component.literal(upgradeNames[i]).withStyle(ChatFormatting.YELLOW),
-                            Component.literal("Place to unlock").withStyle(ChatFormatting.GRAY));
-                    } else {
-                        tip = List.of(
-                            Component.literal(upgradeNames[i]).withStyle(ChatFormatting.DARK_GRAY),
-                            Component.literal("Requires " + upgradeNames[i - 1] + " first")
-                                    .withStyle(ChatFormatting.RED));
-                    }
-                    g.renderTooltip(this.font, tip, java.util.Optional.empty(), mouseX, mouseY);
-                }
-            }
-
-            // ── Bar hover tooltip ─────────────────────────────────────────────
-            int bx = this.leftPos + VBAR_X;
-            int by = this.topPos  + VBAR_Y;
-            if (mouseX >= bx && mouseX < bx + VBAR_W
-                    && mouseY >= by && mouseY < by + VBAR_H) {
-                g.renderTooltip(this.font,
-                    List.of(Component.literal(
-                            this.menu.getStoredWheat() + " / "
-                            + VillageHeartBlockEntity.MAX_WHEAT + " Bundles of Wheat")),
-                    java.util.Optional.empty(), mouseX, mouseY);
-            }
+        // Village-name rename tooltip (right sidebar top area)
+        int nx = leftPos + RIGHT_X + 5;
+        int ny = topPos + 4;
+        if (mx >= nx && mx < leftPos + IMG_W - 4 && my >= ny && my < ny + font.lineHeight + 2) {
+            g.renderTooltip(font,
+                    List.of(Component.literal("Click to rename village")
+                            .withStyle(ChatFormatting.GRAY)),
+                    Optional.empty(), mx, my);
         }
     }
 
-    /**
-     * Draws the village name, radius, worker count, and pending request list
-     * inside the sidebar.  Uses absolute screen coordinates.
-     */
-    private void drawSidebarContent(GuiGraphics g) {
-        int sx    = this.leftPos + SIDEBAR_X + 6;   // 6 px left padding inside sidebar
-        int sy    = this.topPos  + SIDEBAR_Y;
-        int maxW  = SIDEBAR_W - 14;                 // usable text width
-
-        // Village name — truncated with "…" if it doesn't fit
-        String name = this.menu.getVillageName();
-        if (this.font.width(name) > maxW) {
-            name = this.font.plainSubstrByWidth(name, maxW - this.font.width("...")) + "...";
-        }
-        g.drawString(this.font, name, sx, sy + 4, 0x404040, false);
-
-        // Radius (below first divider at sy + 17)
-        g.drawString(this.font, "Radius",                          sx, sy + 21, 0x606060, false);
-        g.drawString(this.font, this.menu.getRadius() + " blocks", sx, sy + 31, 0xFFFFFF, false);
-
-        // Workers (below second divider at sy + 45)
-        g.drawString(this.font, "Workers",                                                       sx, sy + 49, 0x606060, false);
-        g.drawString(this.font, this.menu.getWorkerCount() + " / " + this.menu.getWorkerCap(),   sx, sy + 59, 0xFFFFFF, false);
-
-        // ── Requests section (below base sidebar) ─────────────────────────────
-        int ry = sy + SIDEBAR_H + 4;   // top of request section content (below divider + gap)
-        g.drawString(this.font, "Requests", sx, ry, 0x606060, false);
-
-        List<ItemRequest> reqs = this.menu.getRequests();
-        if (reqs.isEmpty()) {
-            g.drawString(this.font, "None", sx, ry + 11, 0x888888, false);
-        } else {
-            int shown = Math.min(reqs.size(), MAX_VISIBLE_REQUESTS);
-            for (int i = 0; i < shown; i++) {
-                ItemRequest req  = reqs.get(i);
-                String itemName  = req.getRequestedItem().getHoverName().getString();
-                String entryText = req.getWorkerName() + ": " + itemName;
-                if (this.font.width(entryText) > maxW) {
-                    entryText = this.font.plainSubstrByWidth(
-                            entryText, maxW - this.font.width("...")) + "...";
-                }
-                g.drawString(this.font, entryText, sx, ry + 11 + i * REQUEST_ENTRY_H, 0xFFFFFF, false);
-            }
-            if (reqs.size() > MAX_VISIBLE_REQUESTS) {
-                String more = "+" + (reqs.size() - MAX_VISIBLE_REQUESTS) + " more";
-                int moreY   = ry + 11 + MAX_VISIBLE_REQUESTS * REQUEST_ENTRY_H;
-                g.drawString(this.font, more, sx, moreY, 0x888888, false);
-            }
-        }
-    }
-
-    // ── Input handling ─────────────────────────────────────────────────────────
+    // ── Mouse ─────────────────────────────────────────────────────────────────
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (namingMode) {
-            if (keyCode == 257 || keyCode == 335) { confirmName(); return true; }
-            if (keyCode == 256)                    { confirmName(); return true; }
-            if (villageNameField.isFocused())        return villageNameField.keyPressed(keyCode, scanCode, modifiers);
+    public boolean mouseClicked(double mx, double my, int btn) {
+        if (!namingMode) {
+            // Click on village name → enter rename mode
+            int nx = leftPos + RIGHT_X + 5;
+            int ny = topPos  + 4;
+            if (mx >= nx && mx < leftPos + IMG_W - 4 && my >= ny && my < ny + font.lineHeight + 2) {
+                namingMode = true;
+                nameField.setValue(menu.getVillageName());
+                nameField.setVisible(true);
+                nameField.setFocused(true);
+                confirmBtn.visible = true;
+                return true;
+            }
+        }
+        return super.mouseClicked(mx, my, btn);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if (mx >= leftPos && mx < leftPos + LEFT_W
+                && my >= topPos && my < topPos + IMG_H) {
+            int maxVis    = (IMG_H - GOLEM_TOP) / GOLEM_H;
+            int maxScroll = Math.max(0, menu.getGolems().size() - maxVis);
+            golemScroll   = (int) Math.max(0, Math.min(maxScroll, golemScroll - sy));
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.mouseScrolled(mx, my, sx, sy);
+    }
+
+    // ── Keyboard ──────────────────────────────────────────────────────────────
+
+    @Override
+    public boolean keyPressed(int key, int scan, int mods) {
+        if (namingMode) {
+            if (key == 257 || key == 335) { confirmName(); return true; }
+            if (key == 256)               { confirmName(); return true; }
+            if (nameField.isFocused())     return nameField.keyPressed(key, scan, mods);
+            return true;
+        }
+        return super.keyPressed(key, scan, mods);
     }
 
     @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        if (namingMode) return villageNameField.charTyped(codePoint, modifiers);
-        return super.charTyped(codePoint, modifiers);
+    public boolean charTyped(char c, int mods) {
+        if (namingMode) return nameField.charTyped(c, mods);
+        return super.charTyped(c, mods);
     }
 
-    // ── Name confirmation ──────────────────────────────────────────────────────
+    // ── Rename ────────────────────────────────────────────────────────────────
 
     private void confirmName() {
-        String raw  = villageNameField.getValue().trim();
+        String raw  = nameField.getValue().trim();
         String name = raw.isEmpty() ? "My Village" : raw;
         menu.setVillageName(name);
         PacketDistributor.sendToServer(new SetVillageNamePacket(menu.getHeartPos(), name));
         namingMode = false;
-        villageNameField.setVisible(false);
-        villageNameField.setFocused(false);
-        confirmButton.visible = false;
+        nameField.setVisible(false);
+        nameField.setFocused(false);
+        confirmBtn.visible = false;
     }
 }

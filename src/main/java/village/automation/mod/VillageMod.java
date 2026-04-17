@@ -98,6 +98,7 @@ import village.automation.mod.menu.SmithingBlockMenu;
 import village.automation.mod.menu.VillageHeartMenu;
 import village.automation.mod.menu.VillagerWorkerMenu;
 import village.automation.mod.network.SetVillageNamePacket;
+import village.automation.mod.network.SyncGolemsPacket;
 import village.automation.mod.network.SyncRequestsPacket;
 
 @Mod(VillageMod.MODID)
@@ -265,7 +266,8 @@ public class VillageMod {
     // ── Butcher Block ─────────────────────────────────────────────────────────
     public static final DeferredBlock<ButcherBlock> BUTCHER_BLOCK = BLOCKS.register("butcher_block",
             () -> new ButcherBlock(BlockBehaviour.Properties.of()
-                    .mapColor(MapColor.WOOD).strength(2.5f).requiresCorrectToolForDrops()));
+                    .mapColor(MapColor.WOOD).strength(2.5f).requiresCorrectToolForDrops()
+                    .noOcclusion()));
     public static final DeferredItem<BlockItem> BUTCHER_BLOCK_ITEM =
             ITEMS.registerSimpleBlockItem("butcher_block", BUTCHER_BLOCK);
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ButcherBlockEntity>> BUTCHER_BE =
@@ -464,6 +466,10 @@ public class VillageMod {
                 SyncRequestsPacket.TYPE,
                 SyncRequestsPacket.STREAM_CODEC,
                 SyncRequestsPacket::handle);
+        registrar.playToClient(
+                SyncGolemsPacket.TYPE,
+                SyncGolemsPacket.STREAM_CODEC,
+                SyncGolemsPacket::handle);
     }
 
     /**
