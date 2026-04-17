@@ -1,5 +1,12 @@
 {
   "variants": {
-    "": { "model": "colonycraft:block/smelter_block" }
+    "facing=north,lit=false": { "model": "colonycraft:block/smelter_block" },
+    "facing=east,lit=false":  { "model": "colonycraft:block/smelter_block", "y": 90  },
+    "facing=south,lit=false": { "model": "colonycraft:block/smelter_block", "y": 180 },
+    "facing=west,lit=false":  { "model": "colonycraft:block/smelter_block", "y": 270 },
+    "facing=north,lit=true":  { "model": "colonycraft:block/smelter_block_on" },
+    "facing=east,lit=true":   { "model": "colonycraft:block/smelter_block_on", "y": 90  },
+    "facing=south,lit=true":  { "model": "colonycraft:block/smelter_block_on", "y": 180 },
+    "facing=west,lit=true":   { "model": "colonycraft:block/smelter_block_on", "y": 270 }
   }
 }

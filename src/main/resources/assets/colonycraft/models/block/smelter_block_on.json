@@ -1,10 +1,10 @@
 {
   "parent": "minecraft:block/block",
   "textures": {
-    "front":    "minecraft:block/blast_furnace_front",
+    "front":    "minecraft:block/blast_furnace_front_on",
     "side":     "minecraft:block/blast_furnace_side",
     "top":      "minecraft:block/blast_furnace_top",
-    "particle": "minecraft:block/blast_furnace_front"
+    "particle": "minecraft:block/blast_furnace_front_on"
   },
   "elements": [
     {

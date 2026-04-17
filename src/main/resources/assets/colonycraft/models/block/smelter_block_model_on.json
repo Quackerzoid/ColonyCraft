@@ -1,0 +1,51 @@
+{
+	"format_version": "1.21.11",
+	"credit": "Made with Blockbench",
+	"parent": "minecraft:block/orientable",
+	"textures": {
+		"3": "MC default textures:block/blast_furnace_front_on",
+		"side": "textures/block/blast_furnace_side",
+		"top": "textures/block/blast_furnace_top",
+		"particle": "MC default textures:block/blast_furnace_front_on"
+	},
+	"elements": [
+		{
+			"from": [0, 0, 0],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": {"uv": [0, 0, 16, 16], "texture": "#3"},
+				"east": {"uv": [0, 0, 16, 16], "texture": "#side"},
+				"south": {"uv": [0, 0, 16, 16], "texture": "#side"},
+				"west": {"uv": [0, 0, 16, 16], "texture": "#side"},
+				"up": {"uv": [0, 0, 16, 16], "texture": "#top"},
+				"down": {"uv": [0, 0, 16, 16], "texture": "#top"}
+			}
+		},
+		{
+			"from": [6, 16, 6],
+			"to": [10, 28, 10],
+			"rotation": {"angle": 0, "axis": "y", "origin": [6, 16, 6]},
+			"faces": {
+				"north": {"uv": [4, 1, 8, 13], "texture": "#top"},
+				"east": {"uv": [6, 1, 10, 13], "texture": "#top"},
+				"south": {"uv": [5, 1, 9, 13], "texture": "#top"},
+				"west": {"uv": [5, 1, 9, 13], "texture": "#top"},
+				"up": {"uv": [11, 6, 15, 10], "texture": "#top"},
+				"down": {"uv": [0, 0, 4, 4], "texture": "#missing"}
+			}
+		},
+		{
+			"from": [5, 16, 5],
+			"to": [11, 21, 11],
+			"rotation": {"angle": 0, "axis": "y", "origin": [5, 16, 5]},
+			"faces": {
+				"north": {"uv": [6, 8, 12, 13], "texture": "#top"},
+				"east": {"uv": [5, 8, 11, 13], "texture": "#top"},
+				"south": {"uv": [4, 8, 10, 13], "texture": "#top"},
+				"west": {"uv": [4, 8, 10, 13], "texture": "#top"},
+				"up": {"uv": [5, 2, 11, 8], "texture": "#top"},
+				"down": {"uv": [0, 0, 6, 6], "texture": "#missing"}
+			}
+		}
+	]
+}
