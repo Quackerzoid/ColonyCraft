@@ -59,6 +59,7 @@ import village.automation.mod.block.FarmBlock;
 import village.automation.mod.block.FishingBlock;
 import village.automation.mod.block.LumbermillBlock;
 import village.automation.mod.block.MineBlock;
+import village.automation.mod.block.SmelterBlock;
 import village.automation.mod.block.SmithingBlock;
 import village.automation.mod.block.VillageHeartBlock;
 import village.automation.mod.blockentity.AnimalPenBlockEntity;
@@ -69,6 +70,7 @@ import village.automation.mod.blockentity.FarmBlockEntity;
 import village.automation.mod.blockentity.FishingBlockEntity;
 import village.automation.mod.blockentity.LumbermillBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
+import village.automation.mod.blockentity.SmelterBlockEntity;
 import village.automation.mod.blockentity.SmithingBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.CourierEntity;
@@ -78,11 +80,13 @@ import village.automation.mod.loot.VillagerSoulLootModifier;
 import village.automation.mod.menu.AnimalPenBlockMenu;
 import village.automation.mod.menu.BrewingBlockMenu;
 import village.automation.mod.menu.CookingBlockMenu;
+import village.automation.mod.menu.CourierMenu;
 import village.automation.mod.menu.EnchantingBlockMenu;
 import village.automation.mod.menu.FarmBlockMenu;
 import village.automation.mod.menu.FishingBlockMenu;
 import village.automation.mod.menu.LumbermillBlockMenu;
 import village.automation.mod.menu.MineBlockMenu;
+import village.automation.mod.menu.SmelterBlockMenu;
 import village.automation.mod.menu.SmithingBlockMenu;
 import village.automation.mod.menu.VillageHeartMenu;
 import village.automation.mod.menu.VillagerWorkerMenu;
@@ -249,6 +253,21 @@ public class VillageMod {
             MENU_TYPES.register("brewing_block_menu",
                     () -> IMenuTypeExtension.create(BrewingBlockMenu::new));
 
+    // ── Smelter Block ────────────────────────────────────────────────────────
+    public static final DeferredBlock<SmelterBlock> SMELTER_BLOCK = BLOCKS.register("smelter_block",
+            () -> new SmelterBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL)
+                    .strength(3.0f)
+                    .requiresCorrectToolForDrops()));
+    public static final DeferredItem<BlockItem> SMELTER_BLOCK_ITEM =
+            ITEMS.registerSimpleBlockItem("smelter_block", SMELTER_BLOCK);
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmelterBlockEntity>> SMELTER_BLOCK_BE =
+            BLOCK_ENTITY_TYPES.register("smelter_block",
+                    () -> BlockEntityType.Builder.of(SmelterBlockEntity::new, SMELTER_BLOCK.get()).build(null));
+    public static final DeferredHolder<MenuType<?>, MenuType<SmelterBlockMenu>> SMELTER_BLOCK_MENU =
+            MENU_TYPES.register("smelter_block_menu",
+                    () -> IMenuTypeExtension.create(SmelterBlockMenu::new));
+
     // ── Bundle of Wheat ──────────────────────────────────────────────────────
     public static final DeferredItem<Item> BUNDLE_OF_WHEAT =
             ITEMS.registerSimpleItem("bundle_of_wheat", new Item.Properties().stacksTo(16));
@@ -293,6 +312,11 @@ public class VillageMod {
                             .clientTrackingRange(10)
                             .build(MODID + ":courier"));
 
+    // ── Courier menu ─────────────────────────────────────────────────────────
+    public static final DeferredHolder<MenuType<?>, MenuType<CourierMenu>> COURIER_MENU =
+            MENU_TYPES.register("courier_menu",
+                    () -> IMenuTypeExtension.create(CourierMenu::new));
+
     // ── Courier model layer ──────────────────────────────────────────────────
     public static final ModelLayerLocation COURIER_LAYER =
             new ModelLayerLocation(ResourceLocation.fromNamespaceAndPath(MODID, "courier"), "main");
@@ -329,6 +353,7 @@ public class VillageMod {
                         output.accept(ANIMAL_PEN_ITEM.get());
                         output.accept(COOKING_BLOCK_ITEM.get());
                         output.accept(SMITHING_BLOCK_ITEM.get());
+                        output.accept(SMELTER_BLOCK_ITEM.get());
                         output.accept(ENCHANTING_BLOCK_ITEM.get());
                         output.accept(BREWING_BLOCK_ITEM.get());
                         output.accept(BUNDLE_OF_WHEAT.get());

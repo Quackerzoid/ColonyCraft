@@ -33,6 +33,7 @@ import village.automation.mod.entity.goal.LumberjackWorkGoal;
 import village.automation.mod.entity.goal.FetchFoodGoal;
 import village.automation.mod.entity.goal.MinerWorkGoal;
 import village.automation.mod.entity.goal.SmithCraftGoal;
+import village.automation.mod.entity.goal.SmelterWorkGoal;
 import village.automation.mod.entity.goal.WorkerSleepGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -192,6 +193,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
         this.goalSelector.addGoal(2, new MinerWorkGoal(this));
         this.goalSelector.addGoal(2, new SmithCraftGoal(this));
+        this.goalSelector.addGoal(2, new SmelterWorkGoal(this));
         this.goalSelector.addGoal(2, new ChefWorkGoal(this));
         this.goalSelector.addGoal(2, new LumberjackWorkGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));

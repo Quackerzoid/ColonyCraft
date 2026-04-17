@@ -26,7 +26,10 @@
       "Bash(/c/Users/Laurie/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2/bin/jar.exe xf *)",
       "Bash(cp /tmp/assets/minecraft/textures/entity/copper_golem/copper_golem.png /c/Users/Laurie/Downloads/ColonyCraft-main/src/main/resources/assets/colonycraft/textures/entity/courier.png)",
       "Bash(xargs cat *)",
-      "Bash(copy \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\item\\\\villager_soul.png\" \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\soul_pumpkin.png\")"
+      "Bash(copy \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\item\\\\villager_soul.png\" \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\resources\\\\assets\\\\colonycraft\\\\textures\\\\block\\\\soul_pumpkin.png\")",
+      "Bash(cd /tmp)",
+      "Bash(jar xf *)",
+      "Bash(del \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\java\\\\village\\\\automation\\\\mod\\\\client\\\\renderer\\\\layer\\\\SmithProfessionLayer.java\")"
     ]
   }
 }

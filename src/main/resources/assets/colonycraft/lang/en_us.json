@@ -11,6 +11,7 @@
   "block.colonycraft.animal_pen": "Animal Pen",
   "block.colonycraft.cooking_block": "Cooking Block",
   "block.colonycraft.smithing_block": "Smithing Block",
+  "block.colonycraft.smelter_block": "Smelter Block",
   "block.colonycraft.enchanting_block": "Enchanting Block",
   "block.colonycraft.brewing_block": "Brewing Block",
   "block.colonycraft.lumbermill": "Lumbermill",
@@ -22,6 +23,7 @@
   "container.colonycraft.animal_pen": "Animal Pen",
   "container.colonycraft.cooking_block": "Cooking Block",
   "container.colonycraft.smithing_block": "Smithing Block",
+  "container.colonycraft.smelter_block": "Smelter Block",
   "container.colonycraft.enchanting_block": "Enchanting Block",
   "container.colonycraft.brewing_block": "Brewing Block",
   "container.colonycraft.lumbermill": "Lumbermill",
@@ -34,6 +36,7 @@
   "item.colonycraft.village_upgrade_ii": "Village Upgrade II",
   "item.colonycraft.village_upgrade_iii": "Village Upgrade III",
 
+  "entity.colonycraft.courier": "Copper Soul Golem",
   "entity.colonycraft.villager_worker": "Villager Worker",
   "container.colonycraft.villager_worker": "Villager Worker",
   "item.colonycraft.villager_worker_spawn_egg": "Villager Worker Spawn Egg",
