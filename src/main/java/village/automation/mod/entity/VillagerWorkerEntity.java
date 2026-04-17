@@ -193,18 +193,28 @@ public class VillagerWorkerEntity extends AbstractVillager {
     }
 
     /**
-     * Override navigation creation so that {@code canOpenDoors} is set to {@code true}
-     * from the very beginning, before any goals are registered.  This tells the
-     * {@link net.minecraft.world.level.pathfinder.WalkNodeEvaluator} to treat closed
-     * fence-gate and door nodes as passable, and lets {@link OpenDoorGoal} physically
-     * open/close them at runtime.
+     * Returns a {@link net.minecraft.world.entity.ai.navigation.GroundPathNavigation}
+     * whose {@link net.minecraft.world.level.pathfinder.WalkNodeEvaluator} is created
+     * with {@code canPassDoors = true}.
+     *
+     * <p>{@code GroundPathNavigation} calls {@code createPathFinder()} inside its own
+     * constructor, so any post-construction {@code setCanOpenDoors(true)} call arrives
+     * too late to affect the already-built evaluator.  Overriding {@code createPathFinder}
+     * in an anonymous subclass is the only reliable way to inject the flag before the
+     * evaluator is used for the first time.
      */
     @Override
     protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
-        net.minecraft.world.entity.ai.navigation.GroundPathNavigation nav =
-                new net.minecraft.world.entity.ai.navigation.GroundPathNavigation(this, level);
-        nav.setCanOpenDoors(true);
-        return nav;
+        return new net.minecraft.world.entity.ai.navigation.GroundPathNavigation(this, level) {
+            @Override
+            protected net.minecraft.world.level.pathfinder.PathFinder createPathFinder(int maxVisitedNodes) {
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator eval =
+                        new net.minecraft.world.level.pathfinder.WalkNodeEvaluator();
+                eval.setCanPassDoors(true);
+                this.nodeEvaluator = eval;
+                return new net.minecraft.world.level.pathfinder.PathFinder(eval, maxVisitedNodes);
+            }
+        };
     }
 
     public static AttributeSupplier.Builder createAttributes() {
