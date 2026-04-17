@@ -3,81 +3,136 @@ package village.automation.mod.screen;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
-import village.automation.mod.entity.JobType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import village.automation.mod.entity.AnimalType;
 import village.automation.mod.menu.AnimalPenBlockMenu;
 
+import javax.annotation.Nullable;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Screen for the Animal Pen GUI.
+ * Redesigned Animal Pen GUI.
  *
- * <p>Layout (all coords panel-relative):
+ * <h3>Layout overview</h3>
  * <pre>
- *   y =  6   block title
- *   y = 18   worker name + job badge
- *   y = 30   divider
- *   y = 34   3×3 output grid
- *   y = 93   animal type selector  (< name >)
- *   y = 99   divider
- *   y = 101  "Inventory" label
- *   y = 103  player main inventory
- *   y = 157  player hotbar
+ *   ┌──────────────────────────────────────────┐ ┌────────────────┐
+ *   │ Animal Pen                               │ │ Animal         │
+ *   ├──────────────────────────────────────────┤ ├────────────────┤
+ *   │ <Name> [ Shepherd ]                      │ │                │
+ *   ├──────────────────────────────────────────┤ │  [3-D model]   │
+ *   │ Output                                   │ │                │
+ *   │  [3×3 output grid]                       │ ├────────────────┤
+ *   ├──────────────────────────────────────────┤ │ < [Name] >     │
+ *   │ Inventory                                │ ├────────────────┤
+ *   │  [player 3×9]                            │ │ Tool Required  │
+ *   │  [hotbar  1×9]                           │ │ [icon] Shears  │
+ *   └──────────────────────────────────────────┘ ├────────────────┤
+ *                                                 │ Breeding Food  │
+ *                                                 │ [icon] Wheat   │
+ *                                                 └────────────────┘
  * </pre>
+ *
+ * <p>Main panel: 176 × 192 px.
+ * Sidebar: 90 × 192 px, 4 px gap to the right.
+ * Total imageWidth: 270 px.
  */
 public class AnimalPenBlockScreen extends AbstractContainerScreen<AnimalPenBlockMenu> {
 
-    // ── Dimensions ────────────────────────────────────────────────────────────
-    private static final int W = 176;
-    private static final int H = 180;
+    // ── Main panel ────────────────────────────────────────────────────────────
+    private static final int MAIN_W = 176;
+    private static final int MAIN_H = 192;
 
-    // ── Arrow button areas (panel-relative) ───────────────────────────────────
-    private static final int ARROW_L_X = 8;
-    private static final int ARROW_L_Y = 93;
-    private static final int ARROW_R_X = 163;
-    private static final int ARROW_R_Y = 93;
-    private static final int ARROW_W   = 5;
-    private static final int ARROW_H   = 11;
+    // ── Sidebar ───────────────────────────────────────────────────────────────
+    private static final int SIDE_GAP = 4;
+    private static final int SIDE_W   = 90;
+    /** Panel-relative x where the sidebar begins. */
+    private static final int SIDE_X   = MAIN_W + SIDE_GAP;   // 180
 
     // ── Colours ───────────────────────────────────────────────────────────────
-    private static final int COL_BG        = 0xFF3B3B3B;
-    private static final int COL_BORDER_LT = 0xFF666666;
-    private static final int COL_BORDER_DK = 0xFF1A1A1A;
-    private static final int COL_DIVIDER   = 0xFF555555;
-    private static final int COL_SLOT_DK   = 0xFF373737;
-    private static final int COL_SLOT_LT   = 0xFF8B8B8B;
-    private static final int COL_ARROW     = 0xFF888888;
-    private static final int COL_ACCENT    = 0xFFAA6633;   // warm brown for animals
+    private static final int COL_BG          = 0xFF3B3B3B;
+    private static final int COL_BORDER_LT   = 0xFF666666;
+    private static final int COL_BORDER_DK   = 0xFF1A1A1A;
+    private static final int COL_DIVIDER     = 0xFF555555;
+    private static final int COL_SLOT_DK     = 0xFF373737;
+    private static final int COL_SLOT_LT     = 0xFF8B8B8B;
+    private static final int COL_ACCENT      = 0xFFAA6633;   // warm earthy brown
+    private static final int COL_SIDE_BG     = 0xFF2A2A2A;
+    private static final int COL_SIDE_BDR_LT = 0xFF555555;
+    private static final int COL_SIDE_BDR_DK = 0xFF111111;
+
+    // ── Sidebar arrow buttons (all panel-relative) ────────────────────────────
+    private static final int ARR_W  = 8;
+    private static final int ARR_H  = 11;
+    /** Panel-relative x of the left  arrow background. */
+    private static final int ARR_LX = SIDE_X + 4;                    // 184
+    /** Panel-relative x of the right arrow background. */
+    private static final int ARR_RX = SIDE_X + SIDE_W - 4 - ARR_W;  // 258
+    /** Panel-relative y shared by both arrow buttons. */
+    private static final int ARR_Y  = 91;
+
+    // ── 3-D model viewport (panel-relative) ──────────────────────────────────
+    private static final int MODEL_TOP    = 16;
+    private static final int MODEL_BOTTOM = 89;
+
+    // ── Dummy entity cache for 3-D model rendering ────────────────────────────
+    private final EnumMap<AnimalType, LivingEntity> dummies = new EnumMap<>(AnimalType.class);
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public AnimalPenBlockScreen(AnimalPenBlockMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth  = W;
-        this.imageHeight = H;
-        this.inventoryLabelY = 101;
+        this.imageWidth      = MAIN_W + SIDE_GAP + SIDE_W;  // 270
+        this.imageHeight     = MAIN_H;                       // 192
+        // All labels drawn manually
+        this.titleLabelX     = -9999;
+        this.titleLabelY     = -9999;
+        this.inventoryLabelY = -9999;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Lazily creates and caches a dummy entity used only for rendering. */
+    @Nullable
+    private LivingEntity getDummy(AnimalType type) {
+        if (!dummies.containsKey(type) && minecraft != null && minecraft.level != null) {
+            LivingEntity e = switch (type) {
+                case PIG     -> EntityType.PIG.create(minecraft.level);
+                case SHEEP   -> EntityType.SHEEP.create(minecraft.level);
+                case COW     -> EntityType.COW.create(minecraft.level);
+                case CHICKEN -> EntityType.CHICKEN.create(minecraft.level);
+            };
+            if (e != null) dummies.put(type, e);
+        }
+        return dummies.get(type);
     }
 
     // ── Background ────────────────────────────────────────────────────────────
 
     @Override
     protected void renderBg(GuiGraphics g, float partialTick, int mx, int my) {
-        int x = this.leftPos;
-        int y = this.topPos;
+        final int x = this.leftPos;
+        final int y = this.topPos;
 
-        // Panel body
-        g.fill(x + 1, y + 1, x + W - 1, y + H - 1, COL_BG);
+        // ── Main panel body + bevel ───────────────────────────────────────────
+        g.fill(x + 1,          y + 1,          x + MAIN_W - 1, y + MAIN_H - 1, COL_BG);
+        g.fill(x,              y,               x + MAIN_W,     y + 1,          COL_BORDER_LT);
+        g.fill(x,              y,               x + 1,          y + MAIN_H,     COL_BORDER_LT);
+        g.fill(x,              y + MAIN_H - 1, x + MAIN_W,     y + MAIN_H,     COL_BORDER_DK);
+        g.fill(x + MAIN_W - 1, y,              x + MAIN_W,     y + MAIN_H,     COL_BORDER_DK);
 
-        // Bevel border
-        g.fill(x,         y,         x + W,     y + 1,     COL_BORDER_LT);
-        g.fill(x,         y,         x + 1,     y + H,     COL_BORDER_LT);
-        g.fill(x,         y + H - 1, x + W,     y + H,     COL_BORDER_DK);
-        g.fill(x + W - 1, y,         x + W,     y + H,     COL_BORDER_DK);
-
-        // Divider below worker info
-        g.fill(x + 4, y + 30, x + W - 4, y + 31, COL_DIVIDER);
+        // Main panel dividers
+        g.fill(x + 4, y + 14, x + MAIN_W - 4, y + 15, COL_DIVIDER);   // below title
+        g.fill(x + 4, y + 30, x + MAIN_W - 4, y + 31, COL_DIVIDER);   // below worker row
+        g.fill(x + 4, y + 98, x + MAIN_W - 4, y + 99, COL_DIVIDER);   // above inventory
 
         // Slot backgrounds (output grid + player inventory + hotbar)
         for (Slot slot : this.menu.slots) {
@@ -87,54 +142,139 @@ public class AnimalPenBlockScreen extends AbstractContainerScreen<AnimalPenBlock
             g.fill(sx,     sy,     sx + 16, sy + 16, COL_SLOT_LT);
         }
 
-        // Arrow buttons (left / right)
-        g.fill(x + ARROW_L_X, y + ARROW_L_Y, x + ARROW_L_X + ARROW_W, y + ARROW_L_Y + ARROW_H, COL_ARROW);
-        g.fill(x + ARROW_R_X, y + ARROW_R_Y, x + ARROW_R_X + ARROW_W, y + ARROW_R_Y + ARROW_H, COL_ARROW);
+        // ── Sidebar panel body + bevel ────────────────────────────────────────
+        final int sX = x + SIDE_X;
+        g.fill(sX + 1,          y + 1,          sX + SIDE_W - 1, y + MAIN_H - 1, COL_SIDE_BG);
+        g.fill(sX,              y,               sX + SIDE_W,     y + 1,          COL_SIDE_BDR_LT);
+        g.fill(sX,              y,               sX + 1,          y + MAIN_H,     COL_SIDE_BDR_LT);
+        g.fill(sX,              y + MAIN_H - 1, sX + SIDE_W,     y + MAIN_H,     COL_SIDE_BDR_DK);
+        g.fill(sX + SIDE_W - 1, y,              sX + SIDE_W,     y + MAIN_H,     COL_SIDE_BDR_DK);
 
-        // Divider above player inventory
-        g.fill(x + 4, y + 99, x + W - 4, y + 100, COL_DIVIDER);
+        // Sidebar dividers
+        g.fill(sX + 4, y + 14,  sX + SIDE_W - 4, y + 15,  COL_DIVIDER);  // below "Animal" header
+        g.fill(sX + 4, y + 90,  sX + SIDE_W - 4, y + 91,  COL_DIVIDER);  // below 3-D model
+        g.fill(sX + 4, y + 106, sX + SIDE_W - 4, y + 107, COL_DIVIDER);  // below < Name > row
+        g.fill(sX + 4, y + 134, sX + SIDE_W - 4, y + 135, COL_DIVIDER);  // below tool section
+        g.fill(sX + 4, y + 162, sX + SIDE_W - 4, y + 163, COL_DIVIDER);  // below food section
+
+        // Recessed dark background for the 3-D model viewport
+        g.fill(sX + 4, y + MODEL_TOP, sX + SIDE_W - 4, y + MODEL_BOTTOM, 0xFF1A1A1A);
+
+        // Arrow button backgrounds
+        g.fill(x + ARR_LX, y + ARR_Y, x + ARR_LX + ARR_W, y + ARR_Y + ARR_H, 0xFF555555);
+        g.fill(x + ARR_RX, y + ARR_Y, x + ARR_RX + ARR_W, y + ARR_Y + ARR_H, 0xFF555555);
+
+        // ── Live 3-D animal model ─────────────────────────────────────────────
+        AnimalType type = menu.getAnimalType();
+        LivingEntity dummy = getDummy(type);
+        if (dummy != null) {
+            // Pass the viewport centre as the "mouse" so the animal always faces forward.
+            int modelCx = sX + SIDE_W / 2;
+            int modelCy = y + (MODEL_TOP + MODEL_BOTTOM) / 2;
+            InventoryScreen.renderEntityInInventoryFollowsMouse(
+                    g,
+                    sX + 5, y + MODEL_TOP,
+                    sX + SIDE_W - 5, y + MODEL_BOTTOM,
+                    type.getRenderScale(),
+                    0f,
+                    modelCx, modelCy,
+                    dummy);
+        }
     }
 
     // ── Labels ────────────────────────────────────────────────────────────────
 
     @Override
     protected void renderLabels(GuiGraphics g, int mx, int my) {
-        // Block title
-        g.drawString(this.font, this.title, 8, 6, 0xFFFFFF, false);
+        // All coordinates are PANEL-RELATIVE (pose already translated by leftPos/topPos).
 
-        // "Inventory" label
-        g.drawString(this.font, "Inventory", 8, 101, 0x404040, false);
+        // ── Main panel ────────────────────────────────────────────────────────
 
-        // Worker info row
-        int infoY = 18;
+        // Title
+        g.drawString(this.font, this.title, 8, 5, COL_ACCENT & 0xFFFFFF, false);
+
+        // Worker row — name + job badge on one line
         if (!menu.hasWorker()) {
             g.drawString(this.font,
-                    Component.literal("No worker assigned").withStyle(ChatFormatting.DARK_GRAY),
-                    8, infoY, 0x777777, false);
+                    Component.literal("Unassigned").withStyle(ChatFormatting.DARK_GRAY),
+                    8, 18, 0x666666, false);
         } else {
-            String name = menu.getWorkerName();
+            String workerName = menu.getWorkerName();
+            String badge = "[ " + menu.getWorkerJob().getTitle() + " ]";
+            int maxNameW = MAIN_W - 16 - this.font.width(badge) - 4;
+            if (this.font.width(workerName) > maxNameW) {
+                workerName = this.font.plainSubstrByWidth(
+                        workerName, maxNameW - this.font.width("…")) + "…";
+            }
             g.drawString(this.font,
-                    Component.literal(name).withStyle(ChatFormatting.WHITE),
-                    8, infoY, 0xFFFFFF, false);
-            JobType job = menu.getWorkerJob();
-            int badgeX  = 8 + this.font.width(name) + 4;
+                    Component.literal(workerName).withStyle(ChatFormatting.WHITE),
+                    8, 18, 0xFFFFFF, false);
             g.drawString(this.font,
-                    Component.literal("[ " + job.getTitle() + " ]"),
-                    badgeX, infoY, 0xD4A800, false);
+                    Component.literal(badge),
+                    8 + this.font.width(workerName) + 4, 18, COL_ACCENT & 0xFFFFFF, false);
         }
 
-        // Animal type name (centred between arrows)
-        String typeName = menu.getAnimalType().getDisplayName();
-        int nameWidth   = this.font.width(typeName);
-        int centreX     = W / 2 - nameWidth / 2;
-        g.drawString(this.font, Component.literal(typeName), centreX, 95, COL_ACCENT & 0xFFFFFF, false);
+        // "Output" section label (sits above the 3×3 grid)
+        g.drawString(this.font,
+                Component.literal("Output").withStyle(ChatFormatting.GRAY),
+                8, 34, 0x888888, false);
 
-        // Arrow labels
-        g.drawString(this.font, Component.literal("<"), ARROW_L_X + 1, ARROW_L_Y + 2, 0xFFFFFF, false);
-        g.drawString(this.font, Component.literal(">"), ARROW_R_X,     ARROW_R_Y + 2, 0xFFFFFF, false);
+        // "Inventory" section label
+        g.drawString(this.font, "Inventory", 8, 102, 0x777777, false);
+
+        // ── Sidebar ───────────────────────────────────────────────────────────
+        final int stx = SIDE_X + 6;   // standard left-margin text x inside the sidebar
+
+        // Section header
+        g.drawString(this.font,
+                Component.literal("Animal").withStyle(ChatFormatting.GRAY),
+                stx, 5, 0x888888, false);
+
+        // Animal name — horizontally centred in the sidebar, between the arrow buttons
+        AnimalType type = menu.getAnimalType();
+        String animalName = type.getDisplayName();
+        int nameX = SIDE_X + (SIDE_W - this.font.width(animalName)) / 2;
+        g.drawString(this.font,
+                Component.literal(animalName).withStyle(ChatFormatting.WHITE),
+                nameX, ARR_Y + 2, COL_ACCENT & 0xFFFFFF, false);
+
+        // Arrow glyphs inside each button background
+        g.drawString(this.font, Component.literal("<"), ARR_LX + 1, ARR_Y + 2, 0xFFFFFF, false);
+        g.drawString(this.font, Component.literal(">"), ARR_RX + 1, ARR_Y + 2, 0xFFFFFF, false);
+
+        // ── Tool Required section ─────────────────────────────────────────────
+        g.drawString(this.font,
+                Component.literal("Tool Required").withStyle(ChatFormatting.GRAY),
+                stx, 110, 0x888888, false);
+
+        if (type.requiresTool()) {
+            Item tool = type.getRequiredTool();
+            assert tool != null;
+            g.renderItem(new ItemStack(tool), stx, 119);
+            g.drawString(this.font,
+                    Component.literal(tool.getDescription().getString())
+                              .withStyle(ChatFormatting.WHITE),
+                    stx + 20, 123, 0xFFFFFF, false);
+        } else {
+            g.drawString(this.font,
+                    Component.literal("None").withStyle(ChatFormatting.DARK_GRAY),
+                    stx, 121, 0x555555, false);
+        }
+
+        // ── Breeding Food section ─────────────────────────────────────────────
+        g.drawString(this.font,
+                Component.literal("Breeding Food").withStyle(ChatFormatting.GRAY),
+                stx, 138, 0x888888, false);
+
+        Item food = type.getBreedingFood();
+        g.renderItem(new ItemStack(food), stx, 147);
+        g.drawString(this.font,
+                Component.literal(food.getDescription().getString())
+                          .withStyle(ChatFormatting.WHITE),
+                stx + 20, 151, 0xCCCCCC, false);
     }
 
-    // ── Full render ───────────────────────────────────────────────────────────
+    // ── Full render pass ──────────────────────────────────────────────────────
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float partialTick) {
@@ -142,14 +282,14 @@ public class AnimalPenBlockScreen extends AbstractContainerScreen<AnimalPenBlock
         super.render(g, mx, my, partialTick);
         this.renderTooltip(g, mx, my);
 
-        // Tooltip over animal type area
-        int ax = this.leftPos + ARROW_L_X + ARROW_W;
-        int ay = this.topPos  + ARROW_L_Y;
-        int aw = (ARROW_R_X - ARROW_L_X - ARROW_W);
-        if (mx >= ax && mx < ax + aw && my >= ay && my < ay + ARROW_H) {
+        // Tooltip over the name area between the two arrows
+        int selX = this.leftPos + ARR_LX + ARR_W;
+        int selY = this.topPos  + ARR_Y;
+        int selW = ARR_RX - ARR_LX - ARR_W;
+        if (mx >= selX && mx < selX + selW && my >= selY && my < selY + ARR_H) {
             g.renderTooltip(this.font,
                     List.of(Component.literal("Click arrows to change animal")),
-                    java.util.Optional.empty(), mx, my);
+                    Optional.empty(), mx, my);
         }
     }
 
@@ -158,21 +298,18 @@ public class AnimalPenBlockScreen extends AbstractContainerScreen<AnimalPenBlock
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
-            // Convert to panel-relative
             int rx = (int) mouseX - this.leftPos;
             int ry = (int) mouseY - this.topPos;
 
-            // Right arrow (cycle forward)
-            if (rx >= ARROW_R_X && rx < ARROW_R_X + ARROW_W
-                    && ry >= ARROW_R_Y && ry < ARROW_R_Y + ARROW_H) {
+            // Right arrow → next animal (server button ID 0)
+            if (rx >= ARR_RX && rx < ARR_RX + ARR_W && ry >= ARR_Y && ry < ARR_Y + ARR_H) {
                 assert this.minecraft != null;
                 this.minecraft.gameMode.handleInventoryButtonClick(menu.containerId, 0);
                 return true;
             }
 
-            // Left arrow (cycle backward)
-            if (rx >= ARROW_L_X && rx < ARROW_L_X + ARROW_W
-                    && ry >= ARROW_L_Y && ry < ARROW_L_Y + ARROW_H) {
+            // Left arrow → previous animal (server button ID 1)
+            if (rx >= ARR_LX && rx < ARR_LX + ARR_W && ry >= ARR_Y && ry < ARR_Y + ARR_H) {
                 assert this.minecraft != null;
                 this.minecraft.gameMode.handleInventoryButtonClick(menu.containerId, 1);
                 return true;

@@ -23,11 +23,11 @@ import java.util.UUID;
 /**
  * Menu for the Animal Pen GUI.
  *
- * <p>Slot layout:
+ * <p>Slot layout (panel-relative pixel positions):
  * <pre>
- *   0  –  8   output inventory (3×3 grid; player may take but not insert)
- *   9  – 35   player main inventory (3 rows × 9)
- *  36  – 44   player hotbar
+ *   0  –  8   output inventory  3×3 grid at (61 + col*18, 44 + row*18)
+ *   9  – 35   player inventory  3×9 grid at ( 7 + col*18, 100 + row*18)
+ *  36  – 44   player hotbar     1×9 row  at ( 7 + col*18, 158)
  * </pre>
  *
  * <p>One {@link ContainerData} integer is synced while the menu is open:
@@ -103,7 +103,7 @@ public class AnimalPenBlockMenu extends AbstractContainerMenu {
         for (int i = 0; i < 9; i++) {
             int row = i / 3;
             int col = i % 3;
-            this.addSlot(new Slot(container, i, 61 + col * 18, 34 + row * 18) {
+            this.addSlot(new Slot(container, i, 61 + col * 18, 44 + row * 18) {
                 @Override public boolean mayPlace(ItemStack stack) { return false; }
             });
         }
@@ -112,12 +112,12 @@ public class AnimalPenBlockMenu extends AbstractContainerMenu {
     private void addPlayerInventory(Inventory inv) {
         for (int row = 0; row < 3; row++)
             for (int col = 0; col < 9; col++)
-                this.addSlot(new Slot(inv, col + row * 9 + 9, 7 + col * 18, 103 + row * 18));
+                this.addSlot(new Slot(inv, col + row * 9 + 9, 7 + col * 18, 100 + row * 18));
     }
 
     private void addPlayerHotbar(Inventory inv) {
         for (int col = 0; col < 9; col++)
-            this.addSlot(new Slot(inv, col, 7 + col * 18, 157));
+            this.addSlot(new Slot(inv, col, 7 + col * 18, 158));
     }
 
     // ── Button handling ───────────────────────────────────────────────────────
