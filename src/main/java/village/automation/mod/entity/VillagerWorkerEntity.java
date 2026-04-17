@@ -30,6 +30,7 @@ import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
 import village.automation.mod.entity.goal.AnimalKeeperWorkGoal;
+import village.automation.mod.entity.goal.OpenNearbyDoorsGoal;
 import village.automation.mod.entity.goal.FishermanWorkGoal;
 import village.automation.mod.entity.goal.LumberjackWorkGoal;
 import village.automation.mod.entity.goal.FetchFoodGoal;
@@ -192,6 +193,30 @@ public class VillagerWorkerEntity extends AbstractVillager {
         super(type, level);
     }
 
+    /**
+     * Returns a {@link net.minecraft.world.entity.ai.navigation.GroundPathNavigation}
+     * whose {@link net.minecraft.world.level.pathfinder.WalkNodeEvaluator} treats closed
+     * doors and fence gates as walkable nodes ({@code canPassDoors = true}).
+     *
+     * <p>{@code GroundPathNavigation} calls {@code createPathFinder()} inside its own
+     * constructor, so calling {@code setCanOpenDoors(true)} after construction is too
+     * late — the evaluator is already built.  Overriding {@code createPathFinder} in an
+     * anonymous subclass guarantees the flag is set before the first path calculation.
+     */
+    @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
+        return new net.minecraft.world.entity.ai.navigation.GroundPathNavigation(this, level) {
+            @Override
+            protected net.minecraft.world.level.pathfinder.PathFinder createPathFinder(int maxVisitedNodes) {
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator eval =
+                        new net.minecraft.world.level.pathfinder.WalkNodeEvaluator();
+                eval.setCanPassDoors(true);
+                this.nodeEvaluator = eval;
+                return new net.minecraft.world.level.pathfinder.PathFinder(eval, maxVisitedNodes);
+            }
+        };
+    }
+
     public static AttributeSupplier.Builder createAttributes() {
         return AbstractVillager.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
@@ -202,6 +227,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(0, new OpenNearbyDoorsGoal(this, true));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
         this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
