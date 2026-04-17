@@ -21,37 +21,41 @@ import java.util.List;
 /**
  * AI goal for the beekeeper villager.
  *
- * <p>Phases:
- * <ol>
- *   <li>{@code IDLE} — decide what to do next.</li>
- *   <li>{@code APPROACH_BEE} — navigate toward an unclaimed bee.</li>
- *   <li>{@code CLAIM_BEE} — close enough; add bee to the block entity's claimed set.</li>
- *   <li>{@code STAND} — all bee slots full; stand near the beekeeper block and supervise.</li>
- * </ol>
+ * <h3>Phase loop</h3>
+ * <pre>
+ *   APPROACH_BLOCK ──── arrive ────▶ WORK ──── bee found ──▶ APPROACH_BEE
+ *         ▲                           │                            │
+ *         │                           │ (knocked away)             ▼
+ *         └───────────────────────────┘                       CLAIM_BEE
+ *                                                                  │
+ *                                                     ─────────────┘
+ * </pre>
  *
- * <p>The goal runs only when the worker's job is {@link JobType#BEEKEEPER} and the worker
- * has enough food to work.
+ * <p>While in {@code WORK} the keeper stands at the block and calls
+ * {@link BeekeeperBlockEntity#markWorkerPresent()} every tick, which allows the
+ * smoking cycle to advance.  Every {@value #WORK_RECHECK} ticks it also scans
+ * for claimable wild bees nearby.
  */
 public class BeekeeperWorkGoal extends Goal {
 
     // ── Tuning ────────────────────────────────────────────────────────────────
-    private static final double WALK_SPEED      = 0.6;
-    private static final double CLAIM_REACH_SQ  = 9.0;   // 3 block reach, squared
-    private static final double BLOCK_REACH_SQ  = 16.0;  // 4 block reach
-    private static final int    NAV_TIMEOUT     = 400;   // 20 s
-    private static final int    IDLE_RECHECK    = 40;    // recheck every 2 s
-    private static final int    SEARCH_RADIUS   = 48;    // blocks around heart
+    private static final double WALK_SPEED     = 0.6;
+    private static final double CLAIM_REACH_SQ = 9.0;   // 3-block reach, squared
+    /** Keeper is "at" the block when within this many blocks (squared). */
+    private static final double BLOCK_REACH_SQ = 16.0;  // 4 blocks
+    private static final int    NAV_RETRY      = 60;    // re-issue moveTo every 3 s while approaching
+    private static final int    WORK_RECHECK   = 40;    // look for bees every 2 s while working
+    private static final int    SEARCH_RADIUS  = 48;
 
-    // ── State ─────────────────────────────────────────────────────────────────
-    private enum Phase { IDLE, APPROACH_BEE, CLAIM_BEE, STAND }
+    private enum Phase { APPROACH_BLOCK, WORK, APPROACH_BEE, CLAIM_BEE }
 
     private final VillagerWorkerEntity keeper;
-    private Phase  phase      = Phase.IDLE;
-    private int    navTimeout = 0;
-    private int    idleTick   = 0;
+    private Phase  phase    = Phase.APPROACH_BLOCK;
+    private int    navRetry = 0;
+    private int    workTick = 0;
 
-    @Nullable private Bee    targetBee       = null;
-    @Nullable private BlockPos blockPos      = null;
+    @Nullable private Bee      targetBee = null;
+    @Nullable private BlockPos blockPos  = null;
 
     public BeekeeperWorkGoal(VillagerWorkerEntity keeper) {
         this.keeper = keeper;
@@ -75,11 +79,23 @@ public class BeekeeperWorkGoal extends Goal {
                 && !keeper.level().isClientSide();
     }
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    @Override
+    public void start() {
+        phase    = Phase.APPROACH_BLOCK;
+        targetBee = null;
+        navRetry = 0;
+        workTick = 0;
+        navigateToBlock();
+    }
+
     @Override
     public void stop() {
-        phase      = Phase.IDLE;
-        targetBee  = null;
-        navTimeout = 0;
+        phase    = Phase.APPROACH_BLOCK;
+        targetBee = null;
+        navRetry = 0;
+        workTick = 0;
         keeper.getNavigation().stop();
     }
 
@@ -90,62 +106,89 @@ public class BeekeeperWorkGoal extends Goal {
         if (keeper.level().isClientSide()) return;
 
         BeekeeperBlockEntity be = findBlockEntity();
-        if (be == null) { phase = Phase.IDLE; return; }
+        if (be == null) return;
         blockPos = be.getBlockPos();
 
         switch (phase) {
-            case IDLE       -> tickIdle(be);
-            case APPROACH_BEE -> tickApproachBee(be);
-            case CLAIM_BEE  -> tickClaimBee(be);
-            case STAND      -> tickStand(be);
+            case APPROACH_BLOCK -> tickApproachBlock();
+            case WORK           -> tickWork(be);
+            case APPROACH_BEE   -> tickApproachBee(be);
+            case CLAIM_BEE      -> tickClaimBee(be);
         }
     }
 
     // ── Phase handlers ────────────────────────────────────────────────────────
 
-    private void tickIdle(BeekeeperBlockEntity be) {
-        if (++idleTick < IDLE_RECHECK) return;
-        idleTick = 0;
+    private void tickApproachBlock() {
+        if (blockPos == null) return;
 
-        if (be.canClaimMoreBees()) {
-            Bee bee = findNearbyUnclaimedBee(be);
-            if (bee != null) {
-                targetBee = bee;
-                navigateTo(bee.getX(), bee.getY(), bee.getZ());
-                phase = Phase.APPROACH_BEE;
-                navTimeout = NAV_TIMEOUT;
-                return;
-            }
+        // Re-issue moveTo regularly so the pathfinder doesn't give up silently
+        if (++navRetry >= NAV_RETRY) {
+            navRetry = 0;
+            navigateToBlock();
         }
 
-        // No bees to claim: stand near the block
-        phase = Phase.STAND;
+        if (isNearBlock()) {
+            keeper.getNavigation().stop();
+            workTick = 0;
+            phase = Phase.WORK;
+        }
+    }
+
+    private void tickWork(BeekeeperBlockEntity be) {
+        // Mark presence every tick — this is what gates tickSmoking in the block entity
+        be.markWorkerPresent();
+
+        // Look down at the beehive while working
+        if (blockPos != null) {
+            keeper.getLookControl().setLookAt(
+                    blockPos.getX() + 0.5,
+                    blockPos.getY() + 0.5,
+                    blockPos.getZ() + 0.5);
+        }
+
+        // If knocked away, walk back
+        if (!isNearBlock()) {
+            navigateToBlock();
+            phase = Phase.APPROACH_BLOCK;
+            return;
+        }
+
+        // Every WORK_RECHECK ticks, scan for a wild bee to claim
+        if (++workTick >= WORK_RECHECK) {
+            workTick = 0;
+            if (be.canClaimMoreBees()) {
+                Bee bee = findNearbyUnclaimedBee(be);
+                if (bee != null) {
+                    targetBee = bee;
+                    navigateTo(bee.getX(), bee.getY(), bee.getZ());
+                    phase = Phase.APPROACH_BEE;
+                }
+            }
+        }
     }
 
     private void tickApproachBee(BeekeeperBlockEntity be) {
         if (targetBee == null || !targetBee.isAlive() || be.hasClaimed(targetBee.getUUID())) {
-            phase = Phase.IDLE;
+            returnToBlock();
             return;
         }
-        // Update navigation toward moving bee every 20 ticks
+        // Refresh nav toward moving bee every second
         if (keeper.tickCount % 20 == 0) {
             navigateTo(targetBee.getX(), targetBee.getY(), targetBee.getZ());
         }
-        if (--navTimeout <= 0) { phase = Phase.IDLE; return; }
-
-        double distSq = keeper.distanceToSqr(targetBee);
-        if (distSq <= CLAIM_REACH_SQ) {
+        if (keeper.distanceToSqr(targetBee) <= CLAIM_REACH_SQ) {
             phase = Phase.CLAIM_BEE;
         }
     }
 
     private void tickClaimBee(BeekeeperBlockEntity be) {
         if (targetBee == null || !targetBee.isAlive()) {
-            phase = Phase.IDLE;
+            returnToBlock();
             return;
         }
         if (!(keeper.level() instanceof ServerLevel sl)) {
-            phase = Phase.IDLE;
+            returnToBlock();
             return;
         }
 
@@ -157,39 +200,31 @@ public class BeekeeperWorkGoal extends Goal {
         BlockPos heartPos = be.getLinkedHeartPos();
         if (heartPos != null) villageBee.setHeartPos(heartPos);
 
-        // Remove wild bee, spawn village bee
         targetBee.discard();
         sl.addFreshEntity(villageBee);
-
-        // Register the new bee with this block entity
         be.claimBee(villageBee.getUUID());
 
         targetBee = null;
-        phase = Phase.IDLE;
-    }
-
-    private void tickStand(BeekeeperBlockEntity be) {
-        if (be.canClaimMoreBees()) {
-            // A slot opened up; go back to idle to look for more bees
-            phase = Phase.IDLE;
-            return;
-        }
-        // Walk to the block and stand nearby
-        if (blockPos != null) {
-            double distSq = keeper.distanceToSqr(
-                    blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5);
-            if (distSq > BLOCK_REACH_SQ) {
-                navigateTo(blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5);
-            } else {
-                keeper.getNavigation().stop();
-            }
-        }
-        // Stand quietly — no status method on VillagerWorkerEntity
+        returnToBlock();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Finds the nearest unclaimed Bee within the search radius of the heart. */
+    private boolean isNearBlock() {
+        if (blockPos == null) return false;
+        return keeper.distanceToSqr(
+                blockPos.getX() + 0.5,
+                blockPos.getY() + 0.5,
+                blockPos.getZ() + 0.5) <= BLOCK_REACH_SQ;
+    }
+
+    private void returnToBlock() {
+        targetBee = null;
+        navRetry  = 0;
+        navigateToBlock();
+        phase = Phase.APPROACH_BLOCK;
+    }
+
     @Nullable
     private Bee findNearbyUnclaimedBee(BeekeeperBlockEntity be) {
         BlockPos centre = be.getLinkedHeartPos() != null ? be.getLinkedHeartPos() : blockPos;
@@ -198,7 +233,7 @@ public class BeekeeperWorkGoal extends Goal {
         AABB searchBox = new AABB(centre).inflate(SEARCH_RADIUS, 16, SEARCH_RADIUS);
         List<Bee> bees = keeper.level().getEntitiesOfClass(Bee.class, searchBox,
                 b -> b.isAlive()
-                     && !(b instanceof VillageBeeEntity)  // already converted
+                     && !(b instanceof VillageBeeEntity)
                      && !be.hasClaimed(b.getUUID()));
 
         if (bees.isEmpty()) return null;
@@ -206,7 +241,6 @@ public class BeekeeperWorkGoal extends Goal {
         return bees.get(0);
     }
 
-    /** Resolves the block entity from the keeper's workplacePos. */
     @Nullable
     private BeekeeperBlockEntity findBlockEntity() {
         BlockPos wp = keeper.getWorkplacePos();
@@ -217,6 +251,17 @@ public class BeekeeperWorkGoal extends Goal {
 
     private void navigateTo(double x, double y, double z) {
         keeper.getNavigation().moveTo(x, y, z, WALK_SPEED);
-        navTimeout = NAV_TIMEOUT;
+    }
+
+    /**
+     * Navigate to the air block directly above the beehive so the pathfinder
+     * always gets a reachable, non-solid target.
+     */
+    private void navigateToBlock() {
+        if (blockPos != null) {
+            navigateTo(blockPos.getX() + 0.5,
+                       blockPos.getY() + 1.0,   // above the solid block — always reachable
+                       blockPos.getZ() + 0.5);
+        }
     }
 }

@@ -187,6 +187,7 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
     public int getSmokingTimer()      { return containerData.get(1); }
     public int getBeeCount()          { return containerData.get(2); }
     public boolean isFuelBurning()    { return containerData.get(3) != 0; }
+    public boolean hasFuel()          { return containerData.get(4) != 0; }
 
     /** Smoking progress 0.0–1.0 (0 = fresh/idle, 1 = almost done). */
     public float getSmokingProgress() {

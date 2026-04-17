@@ -35,7 +35,10 @@ public class VillageBeeGoal extends Goal {
     private static final int    REST_TICKS      = 100;  // 5 s resting at home block
     private static final int    NAV_TIMEOUT     = 400;  // 20 s max nav before retry
     private static final double FLY_SPEED       = 0.6;
-    private static final double NEAR_DIST_SQ    = 9.0;  // 3-block radius, squared
+    /** Arrival threshold for the crop — bee must be essentially on top (≈1.2 blocks). */
+    private static final double CROP_NEAR_SQ    = 1.5;
+    /** Arrival threshold for the home block — a little more forgiving. */
+    private static final double HOME_NEAR_SQ    = 4.0;
     private static final int    IDLE_RATE       = 20;   // re-evaluate IDLE every 1 s
 
     private enum Phase { IDLE, SEEK_CROP, POLLINATE, RETURN_HOME, REST }
@@ -93,8 +96,8 @@ public class VillageBeeGoal extends Goal {
         BlockPos crop = findNearestImmatureCrop(level, centre);
         if (crop != null) {
             targetCrop = crop;
-            // Aim slightly above the crop so the bee hovers at crop-top height
-            flyTo(crop.getX() + 0.5, crop.getY() + 1.5, crop.getZ() + 0.5);
+            // Target the top surface of the crop block so the bee lands on it
+            flyTo(crop.getX() + 0.5, crop.getY() + 0.5, crop.getZ() + 0.5);
             navTimeout = NAV_TIMEOUT;
             phase = Phase.SEEK_CROP;
         } else {
@@ -120,12 +123,12 @@ public class VillageBeeGoal extends Goal {
 
         // Refresh navigation toward the crop periodically
         if (bee.tickCount % 20 == 0) {
-            flyTo(targetCrop.getX() + 0.5, targetCrop.getY() + 1.5, targetCrop.getZ() + 0.5);
+            flyTo(targetCrop.getX() + 0.5, targetCrop.getY() + 0.5, targetCrop.getZ() + 0.5);
         }
 
         double dist = bee.distanceToSqr(
-                targetCrop.getX() + 0.5, targetCrop.getY() + 1.5, targetCrop.getZ() + 0.5);
-        if (dist <= NEAR_DIST_SQ) {
+                targetCrop.getX() + 0.5, targetCrop.getY() + 0.5, targetCrop.getZ() + 0.5);
+        if (dist <= CROP_NEAR_SQ) {
             bee.getNavigation().stop();
             phase = Phase.POLLINATE;
             phaseTick = POLLINATE_TICKS;
@@ -164,7 +167,7 @@ public class VillageBeeGoal extends Goal {
 
         double dist = bee.distanceToSqr(
                 home.getX() + 0.5, home.getY() + 1.0, home.getZ() + 0.5);
-        if (dist <= NEAR_DIST_SQ) {
+        if (dist <= HOME_NEAR_SQ) {
             bee.getNavigation().stop();
             bee.depositPollen(level);
             phase = Phase.REST;
@@ -179,7 +182,7 @@ public class VillageBeeGoal extends Goal {
             if (home != null) {
                 double dist = bee.distanceToSqr(
                         home.getX() + 0.5, home.getY() + 1.0, home.getZ() + 0.5);
-                if (dist > NEAR_DIST_SQ * 4) {
+                if (dist > HOME_NEAR_SQ * 4) {
                     flyToHome();
                 }
             }

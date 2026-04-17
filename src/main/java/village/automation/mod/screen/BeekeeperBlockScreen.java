@@ -143,10 +143,15 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
                 Component.literal("Pollen: " + pollen),
                 90, 94, COL_ACCENT & 0xFFFFFF, false);
 
-        // Smoking label
+        // Smoking status label
         if (menu.isFuelBurning()) {
             g.drawString(this.font,
                     Component.literal("Smoking...").withStyle(ChatFormatting.GRAY),
+                    8, 97, 0x887755, false);
+        } else if (pollen > 0 && menu.hasFuel()) {
+            // Logs are present but the keeper worker hasn't started yet (or is away)
+            g.drawString(this.font,
+                    Component.literal("Awaiting worker").withStyle(ChatFormatting.GRAY),
                     8, 97, 0x887755, false);
         } else if (pollen > 0) {
             g.drawString(this.font,

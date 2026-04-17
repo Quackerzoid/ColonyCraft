@@ -77,15 +77,30 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
     private int pollenCount  = 0;
     /** Ticks remaining in the current smoking cycle, or 0 if not smoking. */
     private int smokingTimer = 0;
+    /**
+     * Countdown set to 10 by {@link BeekeeperWorkGoal} each tick the beekeeper
+     * worker is standing at the block; decremented once per server tick.
+     * Positive value means "worker was here very recently."  Using a countdown
+     * instead of a single-tick boolean makes the state robust against the
+     * exact ordering of entity-AI vs. block-entity ticks.
+     * Not persisted — the keeper re-establishes presence on the next tick.
+     */
+    private int workerRecentTicks = 0;
 
     // ── ContainerData ─────────────────────────────────────────────────────────
+    // Index 0 — pollenCount
+    // Index 1 — smokingTimer
+    // Index 2 — bee count
+    // Index 3 — actively smoking: workerRecentTicks > 0 AND smokingTimer > 0  (0/1)
+    // Index 4 — hasFuel: at least one log in fuelInput  (0/1)
     public final ContainerData data = new ContainerData() {
         @Override public int get(int i) {
             return switch (i) {
                 case 0 -> pollenCount;
                 case 1 -> smokingTimer;
                 case 2 -> claimedBees.size();
-                case 3 -> smokingTimer > 0 ? 1 : 0;
+                case 3 -> (workerRecentTicks > 0 && smokingTimer > 0) ? 1 : 0;
+                case 4 -> hasFuel() ? 1 : 0;
                 default -> 0;
             };
         }
@@ -95,7 +110,7 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
                 case 1 -> smokingTimer = v;
             }
         }
-        @Override public int getCount() { return 4; }
+        @Override public int getCount() { return 5; }
     };
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -122,7 +137,25 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
     private void tick(ServerLevel level) {
         tickBees(level);
         tickSmoking();
+        // Spawn smoking particles while the keeper is actively working
+        if (workerRecentTicks > 0 && smokingTimer > 0 && level.getGameTime() % 8 == 0) {
+            spawnSmokingParticles(level);
+        }
+        // Countdown — entity AI refreshes this to 10 each tick it calls markWorkerPresent()
+        if (workerRecentTicks > 0) workerRecentTicks--;
         setChanged();
+    }
+
+    /** Puff of smoke + dripping honey above the beehive while it is being smoked. */
+    private void spawnSmokingParticles(ServerLevel level) {
+        BlockPos pos = getBlockPos();
+        double cx  = pos.getX() + 0.5;
+        double top = pos.getY() + 1.05;
+        double cz  = pos.getZ() + 0.5;
+        level.sendParticles(net.minecraft.core.particles.ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                cx, top, cz, 1, 0.15, 0.05, 0.15, 0.005);
+        level.sendParticles(net.minecraft.core.particles.ParticleTypes.DRIPPING_HONEY,
+                cx, top, cz, 1, 0.2, 0.0, 0.2, 0.0);
     }
 
     // ── Bee cycle ─────────────────────────────────────────────────────────────
@@ -162,7 +195,22 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Smoking cycle ─────────────────────────────────────────────────────────
 
+    /**
+     * Called by {@link village.automation.mod.entity.goal.BeekeeperWorkGoal} each
+     * tick that the beekeeper worker is standing at this block.  Smoking will not
+     * progress until this is called.
+     */
+    public void markWorkerPresent() {
+        workerRecentTicks = 10;
+    }
+
+    /** Whether the worker was at the block within the last ~10 ticks (read by the GUI). */
+    public boolean isWorkerPresent() { return workerRecentTicks > 0; }
+
     private void tickSmoking() {
+        // Smoking only progresses while the beekeeper is (or was very recently) working here
+        if (workerRecentTicks <= 0) return;
+
         if (smokingTimer > 0) {
             smokingTimer--;
             if (smokingTimer == 0) {
