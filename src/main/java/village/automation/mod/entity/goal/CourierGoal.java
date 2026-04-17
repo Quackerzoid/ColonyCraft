@@ -22,6 +22,7 @@ import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
 import village.automation.mod.blockentity.AnimalPenBlockEntity;
 import village.automation.mod.blockentity.BeekeeperBlockEntity;
+import village.automation.mod.blockentity.ButcherBlockEntity;
 import village.automation.mod.blockentity.FishingBlockEntity;
 import village.automation.mod.entity.AnimalType;
 import village.automation.mod.blockentity.LumbermillBlockEntity;
@@ -544,6 +545,8 @@ public class CourierGoal extends Goal {
                 transferAllFromContainer(fish.getOutputContainer(), courier.getCarriedInventory());
             } else if (be instanceof AnimalPenBlockEntity pen) {
                 transferAllFromContainer(pen.getOutputContainer(), courier.getCarriedInventory());
+            } else if (be instanceof ButcherBlockEntity butcher) {
+                transferAllFromContainer(butcher.getOutputContainer(), courier.getCarriedInventory());
             }
 
             // Release the workplace lock — the block's output is now in our inventory
@@ -790,10 +793,12 @@ public class CourierGoal extends Goal {
                     && !isContainerEmpty(mill.getOutputContainer());
             boolean hasFishOutput = be instanceof FishingBlockEntity fish
                     && !isContainerEmpty(fish.getOutputContainer());
-            boolean hasPenOutput  = be instanceof AnimalPenBlockEntity pen
+            boolean hasPenOutput     = be instanceof AnimalPenBlockEntity pen
                     && !isContainerEmpty(pen.getOutputContainer());
+            boolean hasButcherOutput = be instanceof ButcherBlockEntity butcher
+                    && !isContainerEmpty(butcher.getOutputContainer());
 
-            if (hasMineOutput || hasFarmWheat || hasMillOutput || hasFishOutput || hasPenOutput) {
+            if (hasMineOutput || hasFarmWheat || hasMillOutput || hasFishOutput || hasPenOutput || hasButcherOutput) {
                 if (dispatcher != null) dispatcher.claimWorkplace(workPos, courier.getUUID());
                 targetWorkplacePos = workPos;
                 courier.setCurrentTask("Gathering resources");

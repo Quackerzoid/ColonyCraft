@@ -28,6 +28,7 @@ import net.minecraft.world.entity.npc.AbstractVillager;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.BeekeeperWorkGoal;
+import village.automation.mod.entity.goal.ButcherWorkGoal;
 import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
 import village.automation.mod.entity.goal.AnimalKeeperWorkGoal;
@@ -221,6 +222,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.goalSelector.addGoal(2, new FishermanWorkGoal(this));
         this.goalSelector.addGoal(2, new AnimalKeeperWorkGoal(this));
         this.goalSelector.addGoal(2, new BeekeeperWorkGoal(this));
+        this.goalSelector.addGoal(2, new ButcherWorkGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));

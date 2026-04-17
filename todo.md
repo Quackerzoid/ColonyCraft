@@ -10,6 +10,7 @@ the bard - during day roams the village and goes up to the unhappiest villagers 
 enchanter
 brewer
 butcher & block
+allays?????
 
 =========================== VILLAGER SKILL SYSTEMS =========================
 - this rewards you for keeping villagers alive and running the village for a long time
@@ -22,6 +23,7 @@ higher level a villager is the more rewards they get from their duty
 bell functionality
 bell golem - when another golem enters combat or he does go ring the bell then patrol the bell and protect
 add golem limit
+snow soul golem for ranged attacks
 add raids 
 	- Illager Raids (Special Item for Enchanter)
 	- Piglin Raids ()
@@ -43,3 +45,4 @@ make animals teleport back when they get too far
 make animalkeeper pick up eggs
 bees do not go into beekeeper block
 bees do not spin or go close enough to the farmland
+when you give animalkeeper items like wheat, seeds they disappear but he still uses them

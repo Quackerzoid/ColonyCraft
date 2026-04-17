@@ -28,9 +28,14 @@ import java.util.EnumSet;
  *
  * <p>Supported recipes:
  * <ul>
- *   <li>{@link Items#WHEAT} → {@link Items#BREAD}
- *   <li>{@link Items#COD}   → {@link Items#COOKED_COD}
- *   <li>{@link Items#SALMON}→ {@link Items#COOKED_SALMON}
+ *   <li>{@link Items#WHEAT}         → {@link Items#BREAD}
+ *   <li>{@link Items#COD}           → {@link Items#COOKED_COD}
+ *   <li>{@link Items#SALMON}        → {@link Items#COOKED_SALMON}
+ *   <li>{@link Items#BEEF}          → {@link Items#COOKED_BEEF}
+ *   <li>{@link Items#PORKCHOP}      → {@link Items#COOKED_PORKCHOP}
+ *   <li>{@link Items#CHICKEN}       → {@link Items#COOKED_CHICKEN}
+ *   <li>{@link Items#MUTTON}        → {@link Items#COOKED_MUTTON}
+ *   <li>{@link Items#RABBIT}        → {@link Items#COOKED_RABBIT}
  * </ul>
  *
  * <p>When the input container is empty, {@link CookingBlockEntity#setNeedsIngredients}
@@ -163,13 +168,23 @@ public class ChefWorkGoal extends Goal {
     private static boolean isCookable(Item item) {
         return item == Items.WHEAT
             || item == Items.COD
-            || item == Items.SALMON;
+            || item == Items.SALMON
+            || item == Items.BEEF
+            || item == Items.PORKCHOP
+            || item == Items.CHICKEN
+            || item == Items.MUTTON
+            || item == Items.RABBIT;
     }
 
     /** Returns the output item that results from cooking {@code ingredient}. */
     private static Item outputFor(Item ingredient) {
-        if (ingredient == Items.COD)    return Items.COOKED_COD;
-        if (ingredient == Items.SALMON) return Items.COOKED_SALMON;
+        if (ingredient == Items.COD)      return Items.COOKED_COD;
+        if (ingredient == Items.SALMON)   return Items.COOKED_SALMON;
+        if (ingredient == Items.BEEF)     return Items.COOKED_BEEF;
+        if (ingredient == Items.PORKCHOP) return Items.COOKED_PORKCHOP;
+        if (ingredient == Items.CHICKEN)  return Items.COOKED_CHICKEN;
+        if (ingredient == Items.MUTTON)   return Items.COOKED_MUTTON;
+        if (ingredient == Items.RABBIT)   return Items.COOKED_RABBIT;
         return Items.BREAD; // WHEAT → BREAD
     }
 
