@@ -5,6 +5,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SwordItem;
@@ -272,7 +273,7 @@ public class ButcherWorkGoal extends Goal {
 
         AABB searchBox = new AABB(centre).inflate(SEARCH_RADIUS, 16, SEARCH_RADIUS);
         List<Animal> candidates = keeper.level().getEntitiesOfClass(Animal.class, searchBox,
-                a -> a.isAlive() && !a.isBaby());
+                a -> a.isAlive() && !a.isBaby() && !(a instanceof Bee));
         if (candidates.isEmpty()) return null;
 
         // Closest-first so the butcher takes a short path
@@ -281,7 +282,7 @@ public class ButcherWorkGoal extends Goal {
             long nearbyCount = keeper.level().getEntitiesOfClass(
                     candidate.getClass(),
                     new AABB(candidate.blockPosition()).inflate(GROUP_RADIUS, 8, GROUP_RADIUS),
-                    a -> a.isAlive() && !a.isBaby()).size();
+                    a -> a.isAlive() && !a.isBaby() && !(a instanceof Bee)).size();
             if (nearbyCount >= MIN_TO_TRIGGER) return candidate;
         }
         return null;
