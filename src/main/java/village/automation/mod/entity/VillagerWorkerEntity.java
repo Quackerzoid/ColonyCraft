@@ -29,6 +29,7 @@ import village.automation.mod.ItemRequest;
 import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
+import village.automation.mod.entity.goal.FishermanWorkGoal;
 import village.automation.mod.entity.goal.LumberjackWorkGoal;
 import village.automation.mod.entity.goal.FetchFoodGoal;
 import village.automation.mod.entity.goal.MinerWorkGoal;
@@ -163,6 +164,18 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public void setChoppingActive(boolean active) { this.choppingActive = active; }
     public boolean isChoppingActive()             { return choppingActive; }
 
+    // ── Fishing state (transient — not persisted) ─────────────────────────────
+    /**
+     * Set to {@code true} by {@link village.automation.mod.entity.goal.FishermanWorkGoal}
+     * while the fisherman is standing near water and actively animating.
+     * Read by {@link village.automation.mod.blockentity.FishingBlockEntity#serverTick}
+     * to decide whether the fish timer should tick down.
+     */
+    private boolean fishingActive = false;
+
+    public void setFishingActive(boolean active) { this.fishingActive = active; }
+    public boolean isFishingActive()             { return fishingActive; }
+
     // ── Employment (server-side authoritative) ────────────────────────────────
     /** Personal name without any job prefix (e.g. "Alice"). */
     private String baseName = "";
@@ -196,6 +209,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.goalSelector.addGoal(2, new SmelterWorkGoal(this));
         this.goalSelector.addGoal(2, new ChefWorkGoal(this));
         this.goalSelector.addGoal(2, new LumberjackWorkGoal(this));
+        this.goalSelector.addGoal(2, new FishermanWorkGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
