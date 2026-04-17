@@ -6,8 +6,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerData;
+import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.CourierEntity;
 
@@ -24,13 +27,21 @@ public class CourierMenu extends AbstractContainerMenu {
 
     @Nullable
     private final CourierEntity courier;
+    private final ContainerData honeyData;
 
     // ── Server-side constructor ───────────────────────────────────────────────
 
     public CourierMenu(int containerId, Inventory playerInventory, CourierEntity courier) {
         super(VillageMod.COURIER_MENU.get(), containerId);
         this.courier = courier;
+        this.honeyData = new ContainerData() {
+            @Override public int get(int i)            { return i == 0 ? courier.getHoneyLevel() : 0; }
+            @Override public void set(int i, int v)    { }
+            @Override public int getCount()            { return 1; }
+        };
         setupSlots(courier.getCarriedInventory());
+        addHoneyInputSlot(courier.getHoneyInput());
+        this.addDataSlots(honeyData);
     }
 
     // ── Client-side constructor (called via IMenuTypeExtension / FriendlyByteBuf) ──
@@ -40,15 +51,21 @@ public class CourierMenu extends AbstractContainerMenu {
         int entityId = buf.readInt();
         Entity e = playerInventory.player.level().getEntity(entityId);
         this.courier = e instanceof CourierEntity c ? c : null;
+        this.honeyData = courier != null ? new ContainerData() {
+            @Override public int get(int i)            { return i == 0 ? courier.getHoneyLevel() : 0; }
+            @Override public void set(int i, int v)    { }
+            @Override public int getCount()            { return 1; }
+        } : new SimpleContainerData(1);
         setupSlots(courier != null ? courier.getCarriedInventory() : new SimpleContainer(9));
+        addHoneyInputSlot(courier != null ? courier.getHoneyInput() : new SimpleContainer(1));
+        this.addDataSlots(honeyData);
     }
 
     // ── Slot setup ────────────────────────────────────────────────────────────
 
     /**
-     * Adds 9 display-only slots in a single row (y = 61, x = 7 + i * 18).
-     * {@code mayPickup} and {@code mayPlace} both return {@code false} so the
-     * player cannot interact with the courier's carried items through this GUI.
+     * Adds 9 display-only slots in a single row (y = 52).
+     * The player cannot interact with the courier's carried items through this GUI.
      */
     private void setupSlots(SimpleContainer inv) {
         for (int i = 0; i < 9; i++) {
@@ -60,6 +77,16 @@ public class CourierMenu extends AbstractContainerMenu {
         }
     }
 
+    /**
+     * Adds 1 honey input slot (y = 82, x = 7).
+     * The player may place honeycomb here; the courier entity consumes it each tick.
+     */
+    private void addHoneyInputSlot(SimpleContainer inv) {
+        this.addSlot(new Slot(inv, 0, 7, 82) {
+            @Override public boolean mayPlace(ItemStack stack) { return stack.is(Items.HONEYCOMB); }
+        });
+    }
+
     // ── Accessors ─────────────────────────────────────────────────────────────
 
     @Nullable
@@ -69,6 +96,9 @@ public class CourierMenu extends AbstractContainerMenu {
     public String getCurrentTask() {
         return courier != null ? courier.getCurrentTask() : "Unknown";
     }
+
+    /** Honey level 0–{@value CourierEntity#MAX_HONEY_LEVEL}, synced to client. */
+    public int getHoneyLevel() { return honeyData.get(0); }
 
     // ── Contract ──────────────────────────────────────────────────────────────
 

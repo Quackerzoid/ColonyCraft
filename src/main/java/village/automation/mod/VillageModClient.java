@@ -17,6 +17,7 @@ import village.automation.mod.client.renderer.SoulIronGolemRenderer;
 import village.automation.mod.screen.SoulIronGolemScreen;
 import village.automation.mod.client.renderer.VillagerWorkerRenderer;
 import village.automation.mod.screen.AnimalPenBlockScreen;
+import village.automation.mod.screen.BeekeeperBlockScreen;
 import village.automation.mod.screen.CourierScreen;
 import village.automation.mod.screen.SmelterBlockScreen;
 import village.automation.mod.screen.BrewingBlockScreen;
@@ -54,6 +55,7 @@ public class VillageModClient {
         event.register(VillageMod.LUMBERMILL_MENU.get(),       LumbermillBlockScreen::new);
         event.register(VillageMod.FISHING_BLOCK_MENU.get(),    FishingBlockScreen::new);
         event.register(VillageMod.ANIMAL_PEN_MENU.get(),       AnimalPenBlockScreen::new);
+        event.register(VillageMod.BEEKEEPER_MENU.get(),        BeekeeperBlockScreen::new);
         event.register(VillageMod.COOKING_BLOCK_MENU.get(),    CookingBlockScreen::new);
         event.register(VillageMod.SMITHING_BLOCK_MENU.get(),   SmithingBlockScreen::new);
         event.register(VillageMod.SMELTER_BLOCK_MENU.get(),    SmelterBlockScreen::new);

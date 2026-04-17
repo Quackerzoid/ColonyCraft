@@ -52,6 +52,7 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import village.automation.mod.block.AnimalPenBlock;
+import village.automation.mod.block.BeekeeperBlock;
 import village.automation.mod.block.BrewingBlock;
 import village.automation.mod.block.CookingBlock;
 import village.automation.mod.block.EnchantingBlock;
@@ -63,6 +64,7 @@ import village.automation.mod.block.SmelterBlock;
 import village.automation.mod.block.SmithingBlock;
 import village.automation.mod.block.VillageHeartBlock;
 import village.automation.mod.blockentity.AnimalPenBlockEntity;
+import village.automation.mod.blockentity.BeekeeperBlockEntity;
 import village.automation.mod.blockentity.BrewingBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.EnchantingBlockEntity;
@@ -78,6 +80,7 @@ import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.item.VillageWandItem;
 import village.automation.mod.loot.VillagerSoulLootModifier;
 import village.automation.mod.menu.AnimalPenBlockMenu;
+import village.automation.mod.menu.BeekeeperBlockMenu;
 import village.automation.mod.menu.BrewingBlockMenu;
 import village.automation.mod.menu.CookingBlockMenu;
 import village.automation.mod.menu.CourierMenu;
@@ -242,6 +245,19 @@ public class VillageMod {
             MENU_TYPES.register("enchanting_block_menu",
                     () -> IMenuTypeExtension.create(EnchantingBlockMenu::new));
 
+    // ── Beekeeper Block ──────────────────────────────────────────────────────
+    public static final DeferredBlock<BeekeeperBlock> BEEKEEPER_BLOCK = BLOCKS.register("beekeeper_block",
+            () -> new BeekeeperBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.COLOR_YELLOW).strength(2.5f).requiresCorrectToolForDrops()));
+    public static final DeferredItem<BlockItem> BEEKEEPER_BLOCK_ITEM =
+            ITEMS.registerSimpleBlockItem("beekeeper_block", BEEKEEPER_BLOCK);
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BeekeeperBlockEntity>> BEEKEEPER_BE =
+            BLOCK_ENTITY_TYPES.register("beekeeper_block",
+                    () -> BlockEntityType.Builder.of(BeekeeperBlockEntity::new, BEEKEEPER_BLOCK.get()).build(null));
+    public static final DeferredHolder<MenuType<?>, MenuType<BeekeeperBlockMenu>> BEEKEEPER_MENU =
+            MENU_TYPES.register("beekeeper_menu",
+                    () -> IMenuTypeExtension.create(BeekeeperBlockMenu::new));
+
     // ── Brewing Block ────────────────────────────────────────────────────────
     public static final DeferredBlock<BrewingBlock> BREWING_BLOCK = BLOCKS.register("brewing_block",
             () -> new BrewingBlock(BlockBehaviour.Properties.of()
@@ -371,6 +387,7 @@ public class VillageMod {
                         output.accept(LUMBERMILL_ITEM.get());
                         output.accept(FISHING_BLOCK_ITEM.get());
                         output.accept(ANIMAL_PEN_ITEM.get());
+                        output.accept(BEEKEEPER_BLOCK_ITEM.get());
                         output.accept(COOKING_BLOCK_ITEM.get());
                         output.accept(SMITHING_BLOCK_ITEM.get());
                         output.accept(SMELTER_BLOCK_ITEM.get());
@@ -475,6 +492,15 @@ public class VillageMod {
                 Capabilities.ItemHandler.BLOCK,
                 ANIMAL_PEN_BE.get(),
                 (be, side) -> side == net.minecraft.core.Direction.DOWN ? be.getOutputHandler() : null
+        );
+        // Beekeeper Block — hoppers below pull honeycomb from output; hoppers from above can push logs into fuel
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                BEEKEEPER_BE.get(),
+                (be, side) -> {
+                    if (side == net.minecraft.core.Direction.DOWN) return be.getOutputHandler();
+                    return null;
+                }
         );
     }
 

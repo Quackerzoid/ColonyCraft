@@ -6,6 +6,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -15,6 +16,7 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
@@ -22,6 +24,7 @@ import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
@@ -58,8 +61,31 @@ public class CourierEntity extends PathfinderMob {
     private static final EntityDataAccessor<Integer> DATA_ENDER_COOLDOWN =
             SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.INT);
 
+    /** Honey level (0–{@value #MAX_HONEY_LEVEL}), synced to clients for the GUI bar. */
+    private static final EntityDataAccessor<Integer> DATA_HONEY_LEVEL =
+            SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.INT);
+
     /** Ticks until the next ender teleport. Server-side authoritative value. */
     private int enderTeleportCooldown = ENDER_TELEPORT_INTERVAL;
+
+    // ── Honey constants ───────────────────────────────────────────────────────
+    /** Maximum honey level. */
+    public static final int MAX_HONEY_LEVEL = 16;
+    /** Ticks between each honey-level drain tick (1 level per 480 ticks = 8 min for 16 levels). */
+    public static final int HONEY_DRAIN_INTERVAL = 480;
+    /** ResourceLocation key for the honey speed-boost attribute modifier. */
+    private static final ResourceLocation HONEY_BOOST_RL =
+            ResourceLocation.fromNamespaceAndPath("colonycraft", "honey_speed");
+    /** +50% movement speed while honeyed up (ADD_MULTIPLIED_BASE: value * 0.5 added to base). */
+    private static final AttributeModifier HONEY_BOOST =
+            new AttributeModifier(HONEY_BOOST_RL, 0.5, AttributeModifier.Operation.ADD_MULTIPLIED_BASE);
+
+    /** Server-side authoritative honey level. */
+    private int honeyLevel = 0;
+    /** Countdown to next honey drain tick. */
+    private int honeyDrainTimer = HONEY_DRAIN_INTERVAL;
+    /** Input slot: player or courier places honeycomb here to fill up the bar. */
+    private final SimpleContainer honeyInput = new SimpleContainer(1);
 
     @Nullable
     private BlockPos linkedHeartPos = null;
@@ -81,6 +107,7 @@ public class CourierEntity extends PathfinderMob {
         builder.define(DATA_TASK, "Idle");
         builder.define(DATA_ENDER, false);
         builder.define(DATA_ENDER_COOLDOWN, ENDER_TELEPORT_INTERVAL);
+        builder.define(DATA_HONEY_LEVEL, 0);
     }
 
     public boolean isUsingChest() { return entityData.get(DATA_USING_CHEST); }
@@ -99,6 +126,15 @@ public class CourierEntity extends PathfinderMob {
 
     /** Remaining ticks until the next ender teleport (client-readable). */
     public int getEnderTeleportCooldown() { return entityData.get(DATA_ENDER_COOLDOWN); }
+
+    /** Honey level 0–{@value #MAX_HONEY_LEVEL}, safe to read client-side. */
+    public int getHoneyLevel() { return entityData.get(DATA_HONEY_LEVEL); }
+
+    /** Input inventory where honeycomb is placed to fill the honey bar. */
+    public SimpleContainer getHoneyInput() { return honeyInput; }
+
+    /** {@code true} when the courier should deliver honeycomb to itself (honey bar not full). */
+    public boolean needsHoney() { return honeyLevel < MAX_HONEY_LEVEL; }
 
     @Override
     public net.minecraft.network.chat.Component getDisplayName() {
@@ -184,6 +220,9 @@ public class CourierEntity extends PathfinderMob {
                 entityData.set(DATA_DISPLAY_ITEM, display.copy());
             }
 
+            // ── Honey system ──────────────────────────────────────────────────
+            tickHoney();
+
             // Ender variant: teleport to the current navigation destination every 40 s.
             if (isEnderVariant() && this.level() instanceof ServerLevel serverLevel) {
                 if (--enderTeleportCooldown <= 0) {
@@ -265,6 +304,57 @@ public class CourierEntity extends PathfinderMob {
         }
     }
 
+    // ── Honey tick ────────────────────────────────────────────────────────────
+
+    /**
+     * Processes the honey system each server tick:
+     * <ul>
+     *   <li>Consumes honeycomb from {@link #honeyInput} to fill {@link #honeyLevel}.</li>
+     *   <li>Drains {@link #honeyLevel} by 1 every {@value #HONEY_DRAIN_INTERVAL} ticks.</li>
+     *   <li>Applies / removes the +50% speed modifier when the level crosses 0.</li>
+     *   <li>Keeps {@link #DATA_HONEY_LEVEL} in sync for the client GUI.</li>
+     * </ul>
+     */
+    private void tickHoney() {
+        boolean changed = false;
+
+        // Consume honeycomb from the input slot
+        ItemStack inSlot = honeyInput.getItem(0);
+        while (!inSlot.isEmpty() && inSlot.is(Items.HONEYCOMB) && honeyLevel < MAX_HONEY_LEVEL) {
+            honeyLevel++;
+            inSlot.shrink(1);
+            changed = true;
+        }
+        if (inSlot.isEmpty()) honeyInput.setItem(0, ItemStack.EMPTY);
+
+        // Drain honey over time
+        if (honeyLevel > 0 && --honeyDrainTimer <= 0) {
+            honeyLevel--;
+            honeyDrainTimer = HONEY_DRAIN_INTERVAL;
+            changed = true;
+        } else if (honeyLevel == 0) {
+            honeyDrainTimer = HONEY_DRAIN_INTERVAL; // reset while empty
+        }
+
+        // Apply / remove speed modifier
+        var speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttr != null) {
+            boolean hasBoost = speedAttr.hasModifier(HONEY_BOOST_RL);
+            if (honeyLevel > 0 && !hasBoost) {
+                speedAttr.addOrUpdateTransientModifier(HONEY_BOOST);
+                changed = true;
+            } else if (honeyLevel == 0 && hasBoost) {
+                speedAttr.removeModifier(HONEY_BOOST_RL);
+                changed = true;
+            }
+        }
+
+        // Sync to clients
+        if (changed && entityData.get(DATA_HONEY_LEVEL) != honeyLevel) {
+            entityData.set(DATA_HONEY_LEVEL, honeyLevel);
+        }
+    }
+
     // ── Heart link ────────────────────────────────────────────────────────────
 
     @Nullable
@@ -303,6 +393,7 @@ public class CourierEntity extends PathfinderMob {
             tag.putInt("HeartZ", linkedHeartPos.getZ());
         }
         tag.putBoolean("IsEnder", isEnderVariant());
+        tag.putInt("HoneyLevel", honeyLevel);
     }
 
     @Override
@@ -314,6 +405,10 @@ public class CourierEntity extends PathfinderMob {
         }
         if (tag.contains("IsEnder")) {
             setEnderVariant(tag.getBoolean("IsEnder"));
+        }
+        if (tag.contains("HoneyLevel")) {
+            honeyLevel = tag.getInt("HoneyLevel");
+            entityData.set(DATA_HONEY_LEVEL, honeyLevel);
         }
     }
 }

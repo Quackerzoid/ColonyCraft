@@ -30,7 +30,10 @@ public enum JobType {
     BLACKSMITH    ("Blacksmith ",   "Blacksmith"   ),
     SMELTER       ("Smelter ",      "Smelter"      ),
     ENCHANTER     ("Enchanter ",    "Enchanter"    ),
-    POTION_BREWER ("Brewer ",       "Potion Brewer");
+    POTION_BREWER ("Brewer ",       "Potion Brewer"),
+
+    // ── Animal care ───────────────────────────────────────────────────────────
+    BEEKEEPER     ("Beekeeper ",    "Beekeeper"    );
 
     // ── Fields ────────────────────────────────────────────────────────────────
 

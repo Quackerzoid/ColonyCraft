@@ -21,6 +21,7 @@ import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
 import village.automation.mod.blockentity.AnimalPenBlockEntity;
+import village.automation.mod.blockentity.BeekeeperBlockEntity;
 import village.automation.mod.blockentity.FishingBlockEntity;
 import village.automation.mod.entity.AnimalType;
 import village.automation.mod.blockentity.LumbermillBlockEntity;
@@ -80,6 +81,10 @@ public class CourierGoal extends Goal {
         DELIVER_TO_SMELTER, PICKUP_FROM_SMELTER,
         DELIVER_TO_ANIMAL_PEN,
         DELIVER_TO_GOLEM,
+        /** Delivering wood logs to a beekeeper block's fuel slot. */
+        DELIVER_LOGS_TO_BEEKEEPER,
+        /** Picking up honeycomb from a beekeeper block's output and delivering it to self. */
+        PICKUP_HONEY_FROM_BEEKEEPER,
         /** Leisurely stroll within the village bounds when truly idle. */
         WANDER,
         /** Carrying a poppy to a Soul Iron Golem to grant it Strength II. */
@@ -113,7 +118,9 @@ public class CourierGoal extends Goal {
     /** True when the smelter delivery is fuel; false when it is ore. */
     private           boolean  smelterDeliverFuel = false;
     /** Animal pen the courier is delivering breeding food to. */
-    @Nullable private BlockPos targetAnimalPenPos = null;
+    @Nullable private BlockPos targetAnimalPenPos   = null;
+    /** Beekeeper block the courier is interacting with (fuel or honey). */
+    @Nullable private BlockPos targetBeekeeperPos   = null;
     /** UUID of a SoulIronGolemEntity the courier is delivering iron or a poppy to. */
     @Nullable private java.util.UUID targetGolemUUID = null;
 
@@ -175,10 +182,12 @@ public class CourierGoal extends Goal {
             case PICKUP_FROM_COOKING -> tickPickupFromCooking(level);
             case DELIVER_TO_SMELTER  -> tickDeliverToSmelter(level);
             case PICKUP_FROM_SMELTER -> tickPickupFromSmelter(level);
-            case DELIVER_TO_ANIMAL_PEN -> tickDeliverToAnimalPen(level);
-            case DELIVER_TO_GOLEM      -> tickDeliverToGolem(level);
-            case WANDER                -> tickWander(level);
-            case DELIVER_POPPY         -> tickDeliverPoppy(level);
+            case DELIVER_TO_ANIMAL_PEN       -> tickDeliverToAnimalPen(level);
+            case DELIVER_TO_GOLEM            -> tickDeliverToGolem(level);
+            case DELIVER_LOGS_TO_BEEKEEPER   -> tickDeliverLogsToBeekeeper(level);
+            case PICKUP_HONEY_FROM_BEEKEEPER -> tickPickupHoneyFromBeekeeper(level);
+            case WANDER                      -> tickWander(level);
+            case DELIVER_POPPY               -> tickDeliverPoppy(level);
         }
     }
 
@@ -217,6 +226,8 @@ public class CourierGoal extends Goal {
         if (tryStartPickupFromCooking(level)) return;
         if (tryStartPickupFromSmelter(level)) return;
         if (tryStartAnimalPenFood(level)) return;
+        if (tryStartBeekeeperFuel(level)) return;
+        if (tryStartHoneyPickup(level)) return;
         if (tryStartGathering(level)) return;
 
         // Nothing to do — after 15 seconds of true idleness, take a stroll.
@@ -372,6 +383,15 @@ public class CourierGoal extends Goal {
                 navigateTo(targetAnimalPenPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.DELIVER_TO_ANIMAL_PEN;
+                return;
+            }
+
+            // Beekeeper fuel delivery path: deposit logs into the beekeeper fuel input
+            if (targetBeekeeperPos != null) {
+                courier.setCurrentTask("Delivering logs to beekeeper");
+                navigateTo(targetBeekeeperPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.DELIVER_LOGS_TO_BEEKEEPER;
                 return;
             }
 
@@ -1161,6 +1181,156 @@ public class CourierGoal extends Goal {
         resetToIdle();
     }
 
+    // ── BEEKEEPER FUEL DELIVERY ───────────────────────────────────────────────
+
+    /**
+     * If any linked beekeeper block has no fuel, fetches wood logs from a chest
+     * and delivers them to the beekeeper's fuel input.
+     */
+    private boolean tryStartBeekeeperFuel(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        CourierDispatcher dispatcher = getDispatcher(level);
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof BeekeeperBlockEntity bk)) continue;
+            // Only deliver if the beekeeper is active (has bees) and low on fuel
+            if (bk.getClaimedBees().isEmpty()) continue;
+            if (bk.hasFuel()) continue;
+            if (dispatcher != null && !dispatcher.isWorkplaceFree(workPos, courier.getUUID())) continue;
+
+            SmithRecipe.Ingredient logIngredient = SmithRecipe.tagged(
+                    net.minecraft.tags.ItemTags.LOGS, net.minecraft.world.item.Items.OAK_LOG, 16);
+            BlockPos chestPos = findChestWithItem(level, logIngredient, dispatcher);
+            if (chestPos == null) continue;
+
+            if (dispatcher != null) {
+                dispatcher.claimWorkplace(workPos, courier.getUUID());
+                dispatcher.claimChest(chestPos, courier.getUUID());
+            }
+            targetBeekeeperPos = workPos;
+            targetChestPos     = chestPos;
+            targetIngredient   = logIngredient;
+            targetAmount       = 16;
+            courier.setCurrentTask("Fetching logs for beekeeper");
+            navigateTo(chestPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.FETCH;
+            return true;
+        }
+        return false;
+    }
+
+    /** Navigates to the beekeeper block and deposits carried logs into the fuel input. */
+    private void tickDeliverLogsToBeekeeper(ServerLevel level) {
+        if (targetBeekeeperPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetBeekeeperPos);
+        }
+
+        if (distSqTo(targetBeekeeperPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetBeekeeperPos);
+            if (be instanceof BeekeeperBlockEntity bk) {
+                transferAll(courier.getCarriedInventory(), bk.getFuelInput());
+            }
+            courier.clearCarried();
+            CourierDispatcher dispatcher = getDispatcher(level);
+            if (dispatcher != null) dispatcher.releaseWorkplace(targetBeekeeperPos);
+            targetBeekeeperPos = null;
+            resetToIdle();
+        }
+    }
+
+    // ── BEEKEEPER HONEY PICKUP ────────────────────────────────────────────────
+
+    /**
+     * If the courier needs honey and a beekeeper has honeycomb in its output,
+     * navigates there and collects it, then delivers it to the courier's own honey input.
+     */
+    private boolean tryStartHoneyPickup(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        if (!courier.needsHoney()) return false;
+        CourierDispatcher dispatcher = getDispatcher(level);
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof BeekeeperBlockEntity bk)) continue;
+            // Check if there's any honeycomb in the output
+            boolean hasHoneycomb = false;
+            for (int i = 0; i < bk.getOutputContainer().getContainerSize(); i++) {
+                if (bk.getOutputContainer().getItem(i).is(net.minecraft.world.item.Items.HONEYCOMB)) {
+                    hasHoneycomb = true;
+                    break;
+                }
+            }
+            if (!hasHoneycomb) continue;
+            if (dispatcher != null && !dispatcher.isWorkplaceFree(workPos, courier.getUUID())) continue;
+
+            if (dispatcher != null) dispatcher.claimWorkplace(workPos, courier.getUUID());
+            targetBeekeeperPos = workPos;
+            courier.setCurrentTask("Collecting honey");
+            navigateTo(workPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.PICKUP_HONEY_FROM_BEEKEEPER;
+            return true;
+        }
+        return false;
+    }
+
+    /** Navigates to the beekeeper, takes honeycomb, and puts it in the courier's honey input. */
+    private void tickPickupHoneyFromBeekeeper(ServerLevel level) {
+        if (targetBeekeeperPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetBeekeeperPos);
+        }
+
+        if (distSqTo(targetBeekeeperPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetBeekeeperPos);
+            if (be instanceof BeekeeperBlockEntity bk) {
+                // Take up to MAX_HONEY_LEVEL honeycomb from the output and put in honey input
+                int needed = CourierEntity.MAX_HONEY_LEVEL - courier.getHoneyLevel();
+                SimpleContainer honeyInput = courier.getHoneyInput();
+                int alreadyQueued = honeyInput.getItem(0).getCount();
+                int toTake = Math.max(0, needed - alreadyQueued);
+
+                if (toTake > 0) {
+                    ItemStack collected = new ItemStack(net.minecraft.world.item.Items.HONEYCOMB, 0);
+                    for (int i = 0; i < bk.getOutputContainer().getContainerSize() && toTake > 0; i++) {
+                        ItemStack slot = bk.getOutputContainer().getItem(i);
+                        if (slot.is(net.minecraft.world.item.Items.HONEYCOMB)) {
+                            int take = Math.min(slot.getCount(), toTake);
+                            slot.shrink(take);
+                            if (slot.isEmpty()) bk.getOutputContainer().setItem(i, ItemStack.EMPTY);
+                            collected.grow(take);
+                            toTake -= take;
+                        }
+                    }
+                    if (!collected.isEmpty()) {
+                        // Merge into existing or set
+                        ItemStack current = honeyInput.getItem(0);
+                        if (current.isEmpty()) {
+                            honeyInput.setItem(0, new ItemStack(
+                                    net.minecraft.world.item.Items.HONEYCOMB, collected.getCount()));
+                        } else {
+                            current.grow(collected.getCount());
+                        }
+                    }
+                }
+            }
+            CourierDispatcher dispatcher = getDispatcher(level);
+            if (dispatcher != null) dispatcher.releaseWorkplace(targetBeekeeperPos);
+            targetBeekeeperPos = null;
+            courier.setCurrentTask("Idle");
+            resetToIdle();
+        }
+    }
+
     // ── WANDER ────────────────────────────────────────────────────────────────
 
     /**
@@ -1359,6 +1529,7 @@ public class CourierGoal extends Goal {
         targetSmelterPos         = null;
         smelterDeliverFuel       = false;
         targetAnimalPenPos       = null;
+        targetBeekeeperPos       = null;
         targetGolemUUID          = null;
         totalIdleTicks           = 0;
         wanderCheckTick          = 0;

@@ -47,13 +47,32 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
     private static final int COL_BAR_READY = 0xFF00EE88;   // green tinge when ≥ 90 % charged
     private static final int COL_BAR_FILL  = 0xFF7722EE;   // ender purple
 
+    // ── Honey bar colours ─────────────────────────────────────────────────────
+    private static final int COL_HONEY_BAR_BG   = 0xFF222222;
+    private static final int COL_HONEY_BAR_FILL = 0xFFDDB33A;   // amber honey
+    private static final int COL_HONEY_FULL     = 0xFFFFDD55;   // bright gold when full
+
     // ── Fixed dimensions ──────────────────────────────────────────────────────
     private static final int MAIN_W       = 176;
-    private static final int MAIN_H_BASE  = 80;            // normal-variant height
-    private static final int MAIN_H_ENDER = 104;           // extra 24 px for teleport section
+    private static final int MAIN_H_BASE  = 108;           // +28 px for honey section
+    private static final int MAIN_H_ENDER = 132;           // extra 24 px for teleport section
     private static final int EP_GAP       = 2;
     private static final int EP_W         = 104;
     private static final int EP_X         = MAIN_W + EP_GAP;  // panel-relative x of entity panel
+
+    // ── Honey bar geometry (panel-relative) ───────────────────────────────────
+    /** x of the honey input slot (panel-relative). */
+    private static final int HONEY_SLOT_X  = 7;
+    /** y of the honey input slot (panel-relative). */
+    private static final int HONEY_SLOT_Y  = 82;
+    /** x-origin of the vertical honey bar. */
+    private static final int HONEY_BAR_X   = 32;
+    /** y-origin of the vertical honey bar (top of bar). */
+    private static final int HONEY_BAR_Y   = 82;
+    /** Width of the vertical honey bar. */
+    private static final int HONEY_BAR_W   = 12;
+    /** Height of the vertical honey bar. */
+    private static final int HONEY_BAR_H   = 18;
 
     private static final int ENTITY_SCALE = 35;
 
@@ -101,14 +120,35 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
             g.fill(sx,     sy,     sx + 16, sy + 16, COL_SLOT_LT);
         }
 
-        // ── Ender teleport section ────────────────────────────────────────────
-        if (isEnder) {
-            // Divider separating the carry area from the teleport section
-            g.fill(x + 4, y + 80, x + MAIN_W - 4, y + 81, COL_DIVIDER);
+        // ── Honey section (always shown) ──────────────────────────────────────
+        // Divider above honey section
+        g.fill(x + 4, y + 79, x + MAIN_W - 4, y + 80, COL_DIVIDER);
 
-            // Cooldown bar (y=93, height 8 px)
+        // Vertical honey bar background
+        g.fill(x + HONEY_BAR_X - 1, y + HONEY_BAR_Y - 1,
+               x + HONEY_BAR_X + HONEY_BAR_W + 1, y + HONEY_BAR_Y + HONEY_BAR_H + 1,
+               COL_HONEY_BAR_BG);
+
+        // Filled portion — fills from bottom to top
+        int honeyLevel = menu.getHoneyLevel();
+        if (honeyLevel > 0) {
+            float fraction = honeyLevel / (float) CourierEntity.MAX_HONEY_LEVEL;
+            int fillH = Math.max(1, (int) (HONEY_BAR_H * fraction));
+            int fillY = y + HONEY_BAR_Y + (HONEY_BAR_H - fillH);
+            boolean full = honeyLevel >= CourierEntity.MAX_HONEY_LEVEL;
+            g.fill(x + HONEY_BAR_X, fillY,
+                   x + HONEY_BAR_X + HONEY_BAR_W, y + HONEY_BAR_Y + HONEY_BAR_H,
+                   full ? COL_HONEY_FULL : COL_HONEY_BAR_FILL);
+        }
+
+        // ── Ender teleport section (y=108+) ──────────────────────────────────
+        if (isEnder) {
+            // Divider below honey, above teleport section
+            g.fill(x + 4, y + 108, x + MAIN_W - 4, y + 109, COL_DIVIDER);
+
+            // Cooldown bar (y=121, height 8 px)
             final int barX = x + 8;
-            final int barY = y + 93;
+            final int barY = y + 121;
             final int barW = MAIN_W - 16;
 
             // Dark background trough
@@ -166,11 +206,30 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
                 Component.literal("Carrying").withStyle(ChatFormatting.GRAY),
                 8, 36, 0xAAAAAA, false);
 
-        // ── Ender: teleport cooldown labels ───────────────────────────────────
+        // ── Honey labels ──────────────────────────────────────────────────────
+        g.drawString(this.font,
+                Component.literal("Honey").withStyle(ChatFormatting.GRAY),
+                HONEY_SLOT_X, 72, 0xDDB33A, false);
+
+        int honeyLevel = menu.getHoneyLevel();
+        String honeyStr = honeyLevel + "/" + CourierEntity.MAX_HONEY_LEVEL;
+        g.drawString(this.font,
+                Component.literal(honeyStr),
+                HONEY_BAR_X + HONEY_BAR_W + 4, HONEY_BAR_Y + 4,
+                honeyLevel >= CourierEntity.MAX_HONEY_LEVEL ? 0xFFDD55 : 0xDDB33A,
+                false);
+
+        if (honeyLevel > 0) {
+            g.drawString(this.font,
+                    Component.literal("1.5\u00d7 Speed").withStyle(ChatFormatting.GOLD),
+                    HONEY_BAR_X + HONEY_BAR_W + 4, HONEY_BAR_Y + 13, 0xFFAA00, false);
+        }
+
+        // ── Ender: teleport cooldown labels (shifted down 28 px) ─────────────
         if (isEnder) {
             g.drawString(this.font,
                     Component.literal("Teleport Cooldown").withStyle(ChatFormatting.GRAY),
-                    8, 83, 0xAAAAAA, false);
+                    8, 111, 0xAAAAAA, false);
 
             // Right-aligned time remaining
             CourierEntity courier = this.menu.getCourier();
@@ -187,7 +246,7 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
                 timeColor = nearReady ? 0x00EE88 : 0xAAAAAA;
             }
             int timeX = MAIN_W - 8 - this.font.width(timeStr);
-            g.drawString(this.font, Component.literal(timeStr), timeX, 83, timeColor, false);
+            g.drawString(this.font, Component.literal(timeStr), timeX, 111, timeColor, false);
         }
 
         // ── Entity panel: courier name (centred at top) ───────────────────────
