@@ -200,8 +200,12 @@ public class VillagerWorkerEntity extends AbstractVillager {
     }
 
     @Override
+    public boolean canOpenDoors() { return true; }
+
+    @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(0, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
         this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));

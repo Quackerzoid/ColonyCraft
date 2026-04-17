@@ -5,6 +5,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.animal.Animal;
@@ -31,13 +32,15 @@ import java.util.UUID;
  * <p>Phases:
  * <ol>
  *   <li><b>IDLE</b> — evaluates priority every 20 ticks:
- *       shear sheep → breed pair → herd unclaimed animal → signal courier for food.
+ *       deposit food from inventory → shear sheep → breed pair → herd unclaimed animal → signal courier for food.
+ *   <li><b>DEPOSIT_FOOD</b> — walk to the pen and transfer breeding food from the
+ *       keeper's inventory into the pen's breedingFoodInput container.
  *   <li><b>HERD_APPROACH</b> — navigate to an unclaimed animal and leash it.
- *   <li><b>HERD</b> — lead the leashed animal back to the pen and release it.
+ *   <li><b>HERD</b> — lead the leashed animal back to the pen, teleport it on arrival.
  *   <li><b>BREED_APPROACH</b> — navigate to the first animal of a breeding pair.
  *   <li><b>BREED</b> — feed both animals to put them in love mode.
  *   <li><b>SHEAR_APPROACH</b> — navigate to a shearable sheep.
- *   <li><b>SHEAR</b> — shear the sheep and collect the wool into the output container.
+ *   <li><b>SHEAR</b> — shear the sheep (using durability), collect the wool.
  * </ol>
  */
 public class AnimalKeeperWorkGoal extends Goal {
@@ -53,7 +56,7 @@ public class AnimalKeeperWorkGoal extends Goal {
     private static final int    VILLAGE_RADIUS      = 32;
 
     // ── Phase ─────────────────────────────────────────────────────────────────
-    private enum Phase { IDLE, HERD_APPROACH, HERD, BREED_APPROACH, BREED, SHEAR_APPROACH, SHEAR }
+    private enum Phase { IDLE, DEPOSIT_FOOD, HERD_APPROACH, HERD, BREED_APPROACH, BREED, SHEAR_APPROACH, SHEAR }
 
     // ── State ─────────────────────────────────────────────────────────────────
     private final VillagerWorkerEntity keeper;
@@ -65,13 +68,11 @@ public class AnimalKeeperWorkGoal extends Goal {
     private int   shearCollectDelay = 0;
 
     /** UUID of the animal being herded or targeted for shearing/breeding. */
-    @Nullable private UUID   targetAnimalUUID  = null;
+    @Nullable private UUID   targetAnimalUUID = null;
     /** UUID of the second animal in a breeding pair. */
-    @Nullable private UUID   breedAnimal2UUID  = null;
-    /** Cached pen block entity position. */
-    @Nullable private BlockPos cachedPenPos    = null;
+    @Nullable private UUID   breedAnimal2UUID = null;
     /** Last known position of a sheared sheep (for wool collection). */
-    @Nullable private BlockPos shearPos        = null;
+    @Nullable private BlockPos shearPos       = null;
 
     public AnimalKeeperWorkGoal(VillagerWorkerEntity keeper) {
         this.keeper = keeper;
@@ -103,12 +104,12 @@ public class AnimalKeeperWorkGoal extends Goal {
 
     @Override
     public void start() {
-        phase           = Phase.IDLE;
-        idleTick        = 0;
-        approachTimeout = 0;
-        herdTimeout     = 0;
-        targetAnimalUUID  = null;
-        breedAnimal2UUID  = null;
+        phase            = Phase.IDLE;
+        idleTick         = 0;
+        approachTimeout  = 0;
+        herdTimeout      = 0;
+        targetAnimalUUID = null;
+        breedAnimal2UUID = null;
     }
 
     @Override
@@ -128,6 +129,7 @@ public class AnimalKeeperWorkGoal extends Goal {
 
         switch (phase) {
             case IDLE          -> tickIdle(level);
+            case DEPOSIT_FOOD  -> tickDepositFood(level);
             case HERD_APPROACH -> tickHerdApproach(level);
             case HERD          -> tickHerd(level);
             case BREED_APPROACH-> tickBreedApproach(level);
@@ -150,6 +152,14 @@ public class AnimalKeeperWorkGoal extends Goal {
         if (pen == null) return;
 
         AnimalType animalType = pen.getTargetAnimalType();
+
+        // ── 0. Deposit food from keeper's own inventory into the pen ──────────
+        if (hasBreedingFoodInInventory(animalType)) {
+            navigateTo(penPos);
+            approachTimeout = APPROACH_TIMEOUT;
+            phase = Phase.DEPOSIT_FOOD;
+            return;
+        }
 
         // ── 1. Shear sheep if applicable ─────────────────────────────────────
         if (animalType == AnimalType.SHEEP && hasShears()) {
@@ -192,10 +202,32 @@ public class AnimalKeeperWorkGoal extends Goal {
             pen.setNeedsBreedingFood(true);
         }
 
-        // ── Request shears if SHEEP type and no shears ────────────────────────
+        // ── 5. Request shears if SHEEP type and no shears ─────────────────────
         if (animalType == AnimalType.SHEEP && !hasShears() && requestCooldown <= 0) {
             submitToolRequest(level, new ItemStack(Items.SHEARS));
             requestCooldown = REQUEST_COOLDOWN_MAX;
+        }
+    }
+
+    // ── DEPOSIT_FOOD ──────────────────────────────────────────────────────────
+
+    private void tickDepositFood(ServerLevel level) {
+        BlockPos penPos = getPenPos();
+        if (penPos == null) { phase = Phase.IDLE; return; }
+
+        if (--approachTimeout <= 0) { phase = Phase.IDLE; return; }
+
+        if (keeper.getNavigation().isDone()) {
+            navigateTo(penPos);
+        }
+
+        if (distSqTo(penPos) <= PEN_REACH_SQ) {
+            AnimalPenBlockEntity pen = getPen(level, penPos);
+            if (pen != null) {
+                transferFoodToPen(pen);
+            }
+            keeper.getNavigation().stop();
+            phase = Phase.IDLE;
         }
     }
 
@@ -233,9 +265,6 @@ public class AnimalKeeperWorkGoal extends Goal {
                 if (pen != null) {
                     pen.addClaimedAnimal(targetAnimalUUID);
                 }
-            }
-            // Navigate to the pen
-            if (penPos != null) {
                 navigateTo(penPos);
             }
             herdTimeout = HERD_TIMEOUT;
@@ -280,9 +309,13 @@ public class AnimalKeeperWorkGoal extends Goal {
             mob.getNavigation().moveTo(keeper, 1.2);
         }
 
-        // When keeper reaches pen, release the leash
+        // When keeper reaches pen, release the leash and teleport the animal onto the pen block
         if (distSqTo(penPos) < PEN_REACH_SQ) {
-            releaseLeash();
+            if (animal instanceof Mob mob) {
+                mob.dropLeash(true, false);
+            }
+            // Teleport animal directly onto the pen block so it is guaranteed inside the fence
+            animal.teleportTo(penPos.getX() + 0.5, penPos.getY(), penPos.getZ() + 0.5);
             targetAnimalUUID = null;
             phase = Phase.IDLE;
         }
@@ -327,7 +360,7 @@ public class AnimalKeeperWorkGoal extends Goal {
         if (pen == null) { phase = Phase.IDLE; return; }
 
         Animal a1 = targetAnimalUUID != null ? getAnimalByUUID(level, targetAnimalUUID) : null;
-        Animal a2 = breedAnimal2UUID  != null ? getAnimalByUUID(level, breedAnimal2UUID)  : null;
+        Animal a2 = breedAnimal2UUID != null  ? getAnimalByUUID(level, breedAnimal2UUID)  : null;
 
         if (a1 == null || a2 == null || !a1.isAlive() || !a2.isAlive()) {
             targetAnimalUUID = null;
@@ -338,11 +371,11 @@ public class AnimalKeeperWorkGoal extends Goal {
 
         // Consume one breeding food item from the pen's input
         SimpleContainer foodIn = pen.getBreedingFoodInput();
-        ItemStack breedingStack = new ItemStack(pen.getTargetAnimalType().getBreedingFood());
+        net.minecraft.world.item.Item foodItem = pen.getTargetAnimalType().getBreedingFood();
         boolean consumed = false;
         for (int i = 0; i < foodIn.getContainerSize(); i++) {
             ItemStack slot = foodIn.getItem(i);
-            if (!slot.isEmpty() && slot.is(breedingStack.getItem())) {
+            if (!slot.isEmpty() && slot.is(foodItem)) {
                 slot.shrink(1);
                 foodIn.setItem(i, slot.isEmpty() ? ItemStack.EMPTY : slot);
                 consumed = true;
@@ -407,7 +440,6 @@ public class AnimalKeeperWorkGoal extends Goal {
         if (shearCollectDelay > 0) {
             shearCollectDelay--;
             if (shearCollectDelay == 0 && shearPos != null) {
-                // Collect dropped wool items near the shear position
                 collectDroppedWool(level, shearPos);
                 shearPos = null;
                 phase = Phase.IDLE;
@@ -440,8 +472,17 @@ public class AnimalKeeperWorkGoal extends Goal {
         shearPos = sheep.blockPosition();
         sheep.shear(SoundSource.PLAYERS);
 
+        // Damage the shears in the tool slot
+        ItemStack shears = keeper.getToolContainer().getItem(0);
+        if (!shears.isEmpty() && shears.is(Items.SHEARS)) {
+            shears.hurtAndBreak(1, keeper, EquipmentSlot.MAINHAND);
+            if (shears.isEmpty()) {
+                keeper.getToolContainer().setItem(0, ItemStack.EMPTY);
+            }
+        }
+
         targetAnimalUUID = null;
-        shearCollectDelay = 2;  // wait 2 ticks for the item entities to spawn
+        shearCollectDelay = 2;  // wait 2 ticks for item entities to spawn
     }
 
     // ── Wool collection ───────────────────────────────────────────────────────
@@ -460,14 +501,58 @@ public class AnimalKeeperWorkGoal extends Goal {
         for (net.minecraft.world.entity.item.ItemEntity itemEntity : items) {
             ItemStack stack = itemEntity.getItem();
             if (stack.isEmpty()) continue;
-            // Check if it's a wool-related item (wool block or carpet)
             boolean isWool = stack.is(net.minecraft.tags.ItemTags.WOOL)
                     || stack.is(net.minecraft.tags.ItemTags.WOOL_CARPETS);
             if (!isWool) continue;
-            // Deposit into output
             depositIntoContainer(output, stack.copy());
             itemEntity.discard();
         }
+    }
+
+    // ── Food deposit helpers ──────────────────────────────────────────────────
+
+    /**
+     * Returns {@code true} if the keeper's worker inventory contains at least one
+     * stack of the breeding food for the given animal type.
+     */
+    private boolean hasBreedingFoodInInventory(AnimalType type) {
+        net.minecraft.world.item.Item food = type.getBreedingFood();
+        SimpleContainer inv = keeper.getWorkerInventory();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            if (inv.getItem(i).is(food)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Transfers all breeding-food items for the pen's animal type from the keeper's
+     * worker inventory into the pen's breedingFoodInput container.
+     */
+    private void transferFoodToPen(AnimalPenBlockEntity pen) {
+        net.minecraft.world.item.Item food = pen.getTargetAnimalType().getBreedingFood();
+        SimpleContainer inv    = keeper.getWorkerInventory();
+        SimpleContainer foodIn = pen.getBreedingFoodInput();
+
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack slot = inv.getItem(i);
+            if (slot.isEmpty() || !slot.is(food)) continue;
+
+            // Merge into existing stacks first, then empty slots
+            for (int j = 0; j < foodIn.getContainerSize() && !slot.isEmpty(); j++) {
+                ItemStack target = foodIn.getItem(j);
+                if (target.isEmpty()) {
+                    foodIn.setItem(j, slot.copy());
+                    slot = ItemStack.EMPTY;
+                } else if (target.is(food) && target.getCount() < target.getMaxStackSize()) {
+                    int space = target.getMaxStackSize() - target.getCount();
+                    int move  = Math.min(space, slot.getCount());
+                    target.grow(move);
+                    slot.shrink(move);
+                }
+            }
+            inv.setItem(i, slot.isEmpty() ? ItemStack.EMPTY : slot);
+        }
+        pen.setNeedsBreedingFood(false);
     }
 
     // ── Search helpers ────────────────────────────────────────────────────────
@@ -487,7 +572,9 @@ public class AnimalKeeperWorkGoal extends Goal {
         List<Animal> candidates = (List<Animal>) findNearPen(level, penPos, type.getAnimalClass(), SEARCH_RADIUS);
         List<Animal> eligible = new java.util.ArrayList<>();
         for (Animal a : candidates) {
-            if (a.isAlive() && !a.isBaby() && !a.isInLove()) {
+            // canFallInLove() checks both loveCooldown == 0 AND !isInLove(), so it
+            // correctly waits out the post-breeding cooldown before trying again.
+            if (a.isAlive() && !a.isBaby() && a.canFallInLove()) {
                 eligible.add(a);
             }
             if (eligible.size() >= 2) break;
@@ -498,7 +585,6 @@ public class AnimalKeeperWorkGoal extends Goal {
     @Nullable
     private Animal findUnclaimedAnimal(ServerLevel level, BlockPos penPos,
                                        AnimalPenBlockEntity pen, AnimalType type) {
-        // Search within village radius around the heart
         BlockPos heartPos = getHeartPos(level);
         if (heartPos == null) return null;
 
