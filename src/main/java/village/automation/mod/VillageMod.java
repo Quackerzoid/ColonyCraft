@@ -433,6 +433,14 @@ public class VillageMod {
                         ? be.getOutputHandler()
                         : null
         );
+        // Lumbermill — hoppers below pull from the 9-slot wood-output inventory
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                LUMBERMILL_BE.get(),
+                (be, side) -> side == net.minecraft.core.Direction.DOWN
+                        ? be.getOutputHandler()
+                        : null
+        );
     }
 
     private static void onEntityAttributes(EntityAttributeCreationEvent event) {
