@@ -2,6 +2,7 @@ package village.automation.mod.client.renderer;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
@@ -132,19 +133,20 @@ public class CourierModel<T extends CourierEntity> extends EntityModel<T> {
     }
 
     /**
-     * Positions the PoseStack at the tip of the right hand (the bottom-centre of
-     * the right arm cube) so that {@link CourierItemLayer} can place an item there.
+     * Positions the PoseStack at the midpoint between both cupped arms so that
+     * {@link CourierItemLayer} can place a carried item there.
      *
-     * <p>Right arm cube: {@code addBox(-3f, -1f, -2f, 3, 10, 4)}.
-     * The cube's local centre-X is {@code -1.5 px} and its lowest Y is {@code 9 px}
-     * from the arm pivot, so we translate by {@code (-1.5/16, 9/16, 0)} after
-     * entering the arm's local space.
+     * <p>In the cradling pose ({@code xRot ≈ -68°}) the two arm wrists converge at
+     * roughly {@code (0, -2.5 px, -8 px)} in body-local space.  We enter body space,
+     * translate to that convergence point, then add a gentle forward tilt so the item
+     * faces the viewer naturally — matching the iconic copper-golem hold.
      */
-    public void translateToRightHandTip(PoseStack poseStack) {
+    public void translateToHeldItemPosition(PoseStack poseStack) {
         body.translateAndRotate(poseStack);
-        rightArm.translateAndRotate(poseStack);
-        // right arm cube spans x: -3..0 (centre -1.5), y: -1..9 (tip = 9)
-        poseStack.translate(-1.5f / 16f, 9.0f / 16f, 0f);
+        // Centre between the cupped hands: x=0, slightly below shoulder, well in front.
+        poseStack.translate(0.0, -2.0 / 16.0, -8.0 / 16.0);
+        // Tilt the item ~20° so it tilts toward the viewer (arms angle forward at ~68°).
+        poseStack.mulPose(Axis.XP.rotationDegrees(-20.0f));
     }
 
     @Override

@@ -42,10 +42,10 @@ public class CourierItemLayer extends RenderLayer<CourierEntity, CourierModel<Co
 
         poseStack.pushPose();
 
-        // Navigate into the right arm's local space and then to the hand tip.
-        this.getParentModel().translateToRightHandTip(poseStack);
+        // Navigate to the midpoint between the courier's cupped arms.
+        this.getParentModel().translateToHeldItemPosition(poseStack);
 
-        // Scale the item down so it fits naturally in the golem's small hand.
+        // Scale so the item sits comfortably between both hands.
         poseStack.scale(0.5f, 0.5f, 0.5f);
 
         Minecraft.getInstance().getItemRenderer().renderStatic(
