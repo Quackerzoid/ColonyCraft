@@ -10,6 +10,7 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import village.automation.mod.VillageMod;
@@ -24,6 +25,19 @@ public class CookingBlockEntity extends WorkplaceBlockEntityBase {
     private final SimpleContainer outputContainer = new SimpleContainer(9);
     /** Set by the chef when the input is empty so the golem treats it as a delivery request. */
     private boolean needsIngredients = false;
+
+    // ── GUI sync ──────────────────────────────────────────────────────────────
+    // Index 0 = cookTimer (200 when a batch starts, counts down to 0, 0 = idle).
+    // Pushed every tick by ChefWorkGoal; read by CookingBlockMenu / screen.
+    private final int[] syncData = new int[1];
+    public final ContainerData data = new ContainerData() {
+        @Override public int get(int i)         { return (i == 0) ? syncData[0] : 0; }
+        @Override public void set(int i, int v) { if (i == 0) syncData[0] = v; }
+        @Override public int getCount()         { return 1; }
+    };
+
+    /** Called by {@link village.automation.mod.entity.goal.ChefWorkGoal} each tick. */
+    public void setCookProgress(int timer) { syncData[0] = timer; }
 
     public CookingBlockEntity(BlockPos pos, BlockState state) {
         super(VillageMod.COOKING_BLOCK_BE.get(), pos, state);

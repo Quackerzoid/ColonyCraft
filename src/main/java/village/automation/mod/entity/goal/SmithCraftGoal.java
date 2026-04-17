@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.blockentity.IWorkplaceBlockEntity;
+import village.automation.mod.blockentity.SmithingBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.SmithRecipe;
@@ -73,6 +74,20 @@ public class SmithCraftGoal extends Goal {
             case VillagerWorkerEntity.SMITH_AWAITING -> tickAwaiting();
             case VillagerWorkerEntity.SMITH_CRAFTING -> tickCrafting(level);
             case VillagerWorkerEntity.SMITH_READY    -> tickReady();
+        }
+
+        // ── Push state to the block entity for GUI sync ───────────────────────
+        BlockPos wp = smith.getWorkplacePos();
+        if (wp != null) {
+            BlockEntity wpBe = level.getBlockEntity(wp);
+            if (wpBe instanceof SmithingBlockEntity sbe) {
+                int itemId = smith.getSmithCurrentRecipe() != null
+                        ? BuiltInRegistries.ITEM.getId(smith.getSmithCurrentRecipe().result) : -1;
+                sbe.setSmithState(
+                        smith.getSmithCraftingState(),
+                        smith.getSmithCraftingTimer(),
+                        itemId);
+            }
         }
     }
 

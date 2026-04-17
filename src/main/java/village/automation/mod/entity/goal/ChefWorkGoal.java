@@ -92,6 +92,7 @@ public class ChefWorkGoal extends Goal {
             }
             cookTimer = 0;
             currentIngredient = null;
+            cooking.setCookProgress(0);
             return;
         }
 
@@ -138,6 +139,9 @@ public class ChefWorkGoal extends Goal {
                 currentIngredient = null; // reset so next tick re-evaluates
             }
         }
+
+        // Mirror current timer into the block entity for GUI sync
+        cooking.setCookProgress(cookTimer);
     }
 
     // ── Ingredient helpers ────────────────────────────────────────────────────
