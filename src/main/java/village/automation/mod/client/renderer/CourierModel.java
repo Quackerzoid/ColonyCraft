@@ -143,10 +143,12 @@ public class CourierModel<T extends CourierEntity> extends EntityModel<T> {
      */
     public void translateToHeldItemPosition(PoseStack poseStack) {
         body.translateAndRotate(poseStack);
-        // Centre between the cupped hands: x=0, slightly below shoulder, well in front.
-        poseStack.translate(0.0, -2.0 / 16.0, -8.0 / 16.0);
-        // Tilt the item ~20° so it tilts toward the viewer (arms angle forward at ~68°).
-        poseStack.mulPose(Axis.XP.rotationDegrees(-20.0f));
+        // Centre between the cupped hands: x=0, 4 px above body-mid, 8 px in front.
+        // (Arm tips at cradling pose converge at body-local y≈-2.67, z≈-8.4 px.)
+        poseStack.translate(0.0, -4.0 / 16.0, -8.0 / 16.0);
+        // Rotate 180° around Y so the item's face points toward the viewer.
+        // The body faces -Z; this brings the item's +Z face around to face the camera.
+        poseStack.mulPose(Axis.YP.rotationDegrees(180.0f));
     }
 
     @Override

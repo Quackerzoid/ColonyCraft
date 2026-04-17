@@ -69,6 +69,9 @@ public class VillageModClient {
         event.registerEntityRenderer(VillageMod.VILLAGER_WORKER.get(), VillagerWorkerRenderer::new);
         event.registerEntityRenderer(VillageMod.COURIER.get(), CourierRenderer::new);
         event.registerEntityRenderer(VillageMod.SOUL_IRON_GOLEM.get(), SoulIronGolemRenderer::new);
+        // Village Bee reuses the vanilla BeeRenderer (same model + textures as a normal bee)
+        event.registerEntityRenderer(VillageMod.VILLAGE_BEE.get(),
+                ctx -> new net.minecraft.client.renderer.entity.BeeRenderer(ctx));
     }
 
     @SubscribeEvent

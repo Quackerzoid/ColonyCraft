@@ -9,17 +9,16 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import village.automation.mod.entity.VillageBeeEntity;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.wrapper.InvWrapper;
 import village.automation.mod.VillageMod;
@@ -70,8 +69,8 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
     private final IItemHandler    outputHandler   = new InvWrapper(outputContainer);
 
     // ── Bee tracking ──────────────────────────────────────────────────────────
-    private final Set<UUID>         claimedBees = new HashSet<>();
-    private final Map<UUID, Integer> beeTimers  = new HashMap<>();
+    /** UUIDs of the {@link VillageBeeEntity} instances owned by this block. */
+    private final Set<UUID> claimedBees = new HashSet<>();
 
     // ── Smoking state ─────────────────────────────────────────────────────────
     /** Number of pollen deposits waiting to be smoked into honeycomb. */
@@ -128,63 +127,37 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Bee cycle ─────────────────────────────────────────────────────────────
 
+    /**
+     * Prunes claimed-bee UUIDs whose {@link VillageBeeEntity} is loaded and dead
+     * (or the wrong type).  Null-returns are skipped so bees in unloaded chunks
+     * are not incorrectly pruned after a world reload.
+     *
+     * <p>Crop advancement and pollen deposit are driven entirely by
+     * {@link village.automation.mod.entity.goal.VillageBeeGoal}; this method only
+     * performs housekeeping.
+     */
     private void tickBees(ServerLevel level) {
-        Iterator<UUID> it = claimedBees.iterator();
-        while (it.hasNext()) {
-            UUID uuid = it.next();
-            Entity entity = level.getEntity(uuid);
-            if (!(entity instanceof Bee bee) || !bee.isAlive()) {
-                it.remove();
-                beeTimers.remove(uuid);
-                continue;
-            }
+        // Rate-limit to once per second to avoid per-tick overhead
+        if (level.getGameTime() % 20 != 0) return;
 
-            int timer = beeTimers.getOrDefault(uuid, BEE_CYCLE_TICKS) - 1;
-            if (timer <= 0) {
-                // Bee completed a pollination cycle
-                advanceNearestCrop(level);
-                if (pollenCount < MAX_POLLEN) {
-                    pollenCount++;
-                }
-                beeTimers.put(uuid, BEE_CYCLE_TICKS);
-            } else {
-                beeTimers.put(uuid, timer);
-            }
-        }
+        claimedBees.removeIf(uuid -> {
+            Entity entity = level.getEntity(uuid);
+            // Entity not loaded → keep the UUID (don't prune on unloaded chunk)
+            if (entity == null) return false;
+            return !(entity instanceof VillageBeeEntity) || !entity.isAlive();
+        });
     }
 
     /**
-     * Finds the nearest un-finished crop within 48 blocks of the linked heart (or this block)
-     * and advances it one growth stage.
+     * Called by {@link VillageBeeEntity#depositPollen} when a village bee returns
+     * home after a successful pollination run.
      */
-    private void advanceNearestCrop(ServerLevel level) {
-        BlockPos centre = getLinkedHeartPos() != null ? getLinkedHeartPos() : this.worldPosition;
-        int radius = 48;
-
-        BlockPos bestPos  = null;
-        double   bestDist = Double.MAX_VALUE;
-
-        for (BlockPos scan : BlockPos.betweenClosed(
-                centre.offset(-radius, -8, -radius),
-                centre.offset( radius,  8,  radius))) {
-            BlockState state = level.getBlockState(scan);
-            if (state.getBlock() instanceof CropBlock crop && !crop.isMaxAge(state)) {
-                double d = scan.distSqr(centre);
-                if (d < bestDist) {
-                    bestDist = d;
-                    bestPos  = scan.immutable();
-                }
-            }
+    public void depositPollen(UUID beeUUID) {
+        if (!claimedBees.contains(beeUUID)) return;
+        if (pollenCount < MAX_POLLEN) {
+            pollenCount++;
         }
-
-        if (bestPos != null) {
-            BlockState oldState = level.getBlockState(bestPos);
-            if (oldState.getBlock() instanceof CropBlock crop) {
-                BlockState newState = crop.getStateForAge(
-                        Math.min(crop.getAge(oldState) + 1, crop.getMaxAge()));
-                level.setBlock(bestPos, newState, 3);
-            }
-        }
+        setChanged();
     }
 
     // ── Smoking cycle ─────────────────────────────────────────────────────────
@@ -248,11 +221,11 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Bee claiming ──────────────────────────────────────────────────────────
 
-    public boolean canClaimMoreBees()            { return claimedBees.size() < MAX_BEES; }
-    public void claimBee(UUID uuid)              { claimedBees.add(uuid); beeTimers.put(uuid, BEE_CYCLE_TICKS); setChanged(); }
-    public void unclaimBee(UUID uuid)            { claimedBees.remove(uuid); beeTimers.remove(uuid); setChanged(); }
-    public boolean hasClaimed(UUID uuid)         { return claimedBees.contains(uuid); }
-    public Set<UUID> getClaimedBees()            { return Collections.unmodifiableSet(claimedBees); }
+    public boolean canClaimMoreBees()    { return claimedBees.size() < MAX_BEES; }
+    public void claimBee(UUID uuid)      { claimedBees.add(uuid); setChanged(); }
+    public void unclaimBee(UUID uuid)    { claimedBees.remove(uuid); setChanged(); }
+    public boolean hasClaimed(UUID uuid) { return claimedBees.contains(uuid); }
+    public Set<UUID> getClaimedBees()    { return Collections.unmodifiableSet(claimedBees); }
 
     // ── Inventory accessors ───────────────────────────────────────────────────
 
@@ -312,12 +285,11 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
         }
         tag.put("OutputInventory", outList);
 
-        // Claimed bees + timers
+        // Claimed village bee UUIDs
         ListTag beeList = new ListTag();
         for (UUID uuid : claimedBees) {
             CompoundTag bt = new CompoundTag();
             bt.putUUID("UUID", uuid);
-            bt.putInt("Timer", beeTimers.getOrDefault(uuid, BEE_CYCLE_TICKS));
             beeList.add(bt);
         }
         tag.put("ClaimedBees", beeList);
@@ -356,17 +328,14 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
             }
         }
 
-        // Claimed bees
+        // Claimed village bee UUIDs
         claimedBees.clear();
-        beeTimers.clear();
         if (tag.contains("ClaimedBees")) {
             ListTag list = tag.getList("ClaimedBees", Tag.TAG_COMPOUND);
             for (int i = 0; i < list.size(); i++) {
                 CompoundTag bt = list.getCompound(i);
                 if (bt.hasUUID("UUID")) {
-                    UUID uuid = bt.getUUID("UUID");
-                    claimedBees.add(uuid);
-                    beeTimers.put(uuid, bt.contains("Timer") ? bt.getInt("Timer") : BEE_CYCLE_TICKS);
+                    claimedBees.add(bt.getUUID("UUID"));
                 }
             }
         }

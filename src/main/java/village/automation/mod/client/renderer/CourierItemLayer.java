@@ -46,11 +46,13 @@ public class CourierItemLayer extends RenderLayer<CourierEntity, CourierModel<Co
         this.getParentModel().translateToHeldItemPosition(poseStack);
 
         // Scale so the item sits comfortably between both hands.
-        poseStack.scale(0.5f, 0.5f, 0.5f);
+        poseStack.scale(0.65f, 0.65f, 0.65f);
 
+        // Use FIXED context so vanilla hand-hold transforms (which assume arm-tip geometry)
+        // are not applied — we control orientation entirely via translateToHeldItemPosition.
         Minecraft.getInstance().getItemRenderer().renderStatic(
                 stack,
-                ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                ItemDisplayContext.FIXED,
                 packedLight,
                 OverlayTexture.NO_OVERLAY,
                 poseStack,

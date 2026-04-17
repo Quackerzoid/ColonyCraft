@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "down":     "minecraft:block/beehive_end",
+    "up":       "minecraft:block/beehive_end",
+    "north":    "minecraft:block/beehive_front",
+    "south":    "minecraft:block/beehive_front",
+    "east":     "minecraft:block/beehive_side",
+    "west":     "minecraft:block/beehive_side",
+    "particle": "minecraft:block/beehive_side"
+  }
+}

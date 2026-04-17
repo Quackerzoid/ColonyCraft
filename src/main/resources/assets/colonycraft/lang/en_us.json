@@ -16,6 +16,7 @@
   "block.colonycraft.brewing_block": "Brewing Block",
   "block.colonycraft.lumbermill": "Lumbermill",
   "block.colonycraft.soul_pumpkin": "Soul Pumpkin",
+  "block.colonycraft.beekeeper_block": "Beekeeper",
 
   "container.colonycraft.farm_block": "Farm Block",
   "container.colonycraft.mine_block": "Mine Block",
@@ -27,6 +28,7 @@
   "container.colonycraft.enchanting_block": "Enchanting Block",
   "container.colonycraft.brewing_block": "Brewing Block",
   "container.colonycraft.lumbermill": "Lumbermill",
+  "container.colonycraft.beekeeper_block": "Beekeeper",
   "container.colonycraft.village_heart": "Village Heart",
 
   "item.colonycraft.bundle_of_wheat": "Bundle of Wheat",
@@ -36,6 +38,7 @@
   "item.colonycraft.village_upgrade_ii": "Village Upgrade II",
   "item.colonycraft.village_upgrade_iii": "Village Upgrade III",
 
+  "entity.colonycraft.village_bee": "Village Bee",
   "entity.colonycraft.courier": "Copper Soul Golem",
   "entity.colonycraft.courier_ender": "Ender Copper Golem",
   "entity.colonycraft.soul_iron_golem": "Soul Iron Golem",
