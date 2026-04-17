@@ -23,6 +23,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.VillageMod;
+import village.automation.mod.entity.CourierDispatcher;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillageHeartMenu;
@@ -68,6 +69,10 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
 
     // UUIDs of courier golems linked to this heart (server-side only)
     private final Set<UUID> courierUUIDs = new HashSet<>();
+
+    // Shared task-coordination layer — prevents multiple couriers from duplicating work.
+    // Transient: not persisted to NBT; resets cleanly on server restart.
+    private final CourierDispatcher courierDispatcher = new CourierDispatcher();
 
     // Positions of all profession workplace blocks linked to this heart (server-side only)
     private final Set<BlockPos> linkedWorkplaces = new HashSet<>();
@@ -123,6 +128,9 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, VillageHeartBlockEntity be) {
         if (!(level instanceof ServerLevel serverLevel)) return;
+
+        // ── Courier dispatcher — must tick first so expiry runs before goal logic ──
+        be.courierDispatcher.tick();
 
         // ── Worker count + cap sync ──────────────────────────────────────────
         be.cleanDeadCouriers(serverLevel);
@@ -192,11 +200,18 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         setChanged();
     }
 
-    /** Removes dead/unloaded courier UUIDs. */
+    /** Returns the task dispatcher shared by all couriers linked to this heart. */
+    public CourierDispatcher getCourierDispatcher() {
+        return courierDispatcher;
+    }
+
+    /** Removes dead/unloaded courier UUIDs and releases their dispatcher locks. */
     private void cleanDeadCouriers(ServerLevel serverLevel) {
         courierUUIDs.removeIf(uuid -> {
             var entity = serverLevel.getEntity(uuid);
-            return entity == null || !entity.isAlive();
+            boolean dead = entity == null || !entity.isAlive();
+            if (dead) courierDispatcher.release(uuid);
+            return dead;
         });
     }
 
