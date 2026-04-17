@@ -359,8 +359,8 @@ public class AnimalKeeperWorkGoal extends Goal {
         }
 
         // Put both animals in love mode
-        a1.setInLove(null, breedingStack);
-        a2.setInLove(null, breedingStack);
+        a1.setInLove(null);
+        a2.setInLove(null);
 
         // Play eating sound at keeper location
         level.playSound(null,
