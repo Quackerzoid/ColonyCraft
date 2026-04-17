@@ -168,7 +168,20 @@ public class CourierGoal extends Goal {
         if (tryStartSmelterDelivery(level)) return;
 
         // ── IDLE TASKS (only when not already carrying something) ─────────────
-        if (courier.isCarryingAnything()) return;
+        if (courier.isCarryingAnything()) {
+            // Safety valve: if we're carrying items but have no active task (e.g. a
+            // direct delivery failed because the target worker was unreachable or gone),
+            // deposit the items into the nearest chest rather than being stuck forever.
+            BlockPos chestPos = findAnyChest(level);
+            if (chestPos != null) {
+                targetChestPos = chestPos;
+                courier.setCurrentTask("Depositing to chest");
+                navigateTo(chestPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.DEPOSIT_GATHERED;
+            }
+            return;
+        }
         if (tryStartPickupFromCooking(level)) return;
         if (tryStartPickupFromSmelter(level)) return;
         tryStartGathering(level);
@@ -563,7 +576,8 @@ public class CourierGoal extends Goal {
     }
 
     /**
-     * If a cooking block has signalled it needs wheat, fetches wheat from an
+     * If a cooking block has signalled it needs ingredients, fetches a cookable
+     * item (wheat, raw cod, or raw salmon — in that priority order) from an
      * unclaimed chest and starts a FETCH→DELIVER_TO_COOKING chain.  Skips
      * cooking blocks and chests already claimed by another courier.
      */
@@ -579,8 +593,19 @@ public class CourierGoal extends Goal {
             if (!cooking.isNeedsIngredients()) continue;
             if (dispatcher != null && !dispatcher.isCookingFree(workPos, courier.getUUID())) continue;
 
-            SmithRecipe.Ingredient wheatIng = SmithRecipe.exact(Items.WHEAT, 1);
-            BlockPos chestPos = findChestWithItem(level, wheatIng, dispatcher);
+            // Try cookable ingredients in priority order: wheat → cod → salmon
+            SmithRecipe.Ingredient ingredient = null;
+            BlockPos chestPos = null;
+            for (net.minecraft.world.item.Item candidate :
+                    List.of(Items.WHEAT, Items.COD, Items.SALMON)) {
+                SmithRecipe.Ingredient ing = SmithRecipe.exact(candidate, 1);
+                BlockPos found = findChestWithItem(level, ing, dispatcher);
+                if (found != null) {
+                    ingredient = ing;
+                    chestPos   = found;
+                    break;
+                }
+            }
             if (chestPos == null) continue;
 
             if (dispatcher != null) {
@@ -589,7 +614,7 @@ public class CourierGoal extends Goal {
             }
             targetCookingPos = workPos;
             targetChestPos   = chestPos;
-            targetIngredient = wheatIng;
+            targetIngredient = ingredient;
             targetAmount     = 64;
             courier.setCurrentTask("Fetching for chef");
             navigateTo(chestPos);
@@ -631,6 +656,14 @@ public class CourierGoal extends Goal {
             // Skip if another courier already handles this request
             if (dispatcher != null
                     && !dispatcher.isRequestFree(req.getWorkerUUID(), courier.getUUID())) continue;
+
+            // Skip (and cancel) requests from workers that no longer exist in the world —
+            // prevents the courier from fetching an item it can never deliver
+            Entity reqEntity = level.getEntity(req.getWorkerUUID());
+            if (!(reqEntity instanceof VillagerWorkerEntity) || !reqEntity.isAlive()) {
+                heart.resolveRequest(req.getWorkerUUID());
+                continue;
+            }
 
             ItemStack wanted  = req.getRequestedItem();
             BlockPos chestPos = findChestWithExactItem(level, wanted, dispatcher);

@@ -7,6 +7,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -14,11 +15,30 @@ import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 
+import javax.annotation.Nullable;
 import java.util.EnumSet;
 
+/**
+ * AI goal for Chef workers.
+ *
+ * <p>The chef walks to their cooking block and waits for ingredients.  When the
+ * courier delivers an ingredient the chef cooks it over {@value #COOK_TICKS}
+ * ticks and deposits the result into the output container for the courier to
+ * collect.
+ *
+ * <p>Supported recipes:
+ * <ul>
+ *   <li>{@link Items#WHEAT} → {@link Items#BREAD}
+ *   <li>{@link Items#COD}   → {@link Items#COOKED_COD}
+ *   <li>{@link Items#SALMON}→ {@link Items#COOKED_SALMON}
+ * </ul>
+ *
+ * <p>When the input container is empty, {@link CookingBlockEntity#setNeedsIngredients}
+ * is set so the courier knows to fetch more.
+ */
 public class ChefWorkGoal extends Goal {
 
-    private static final int    COOK_TICKS        = 200;  // 10 s per bread
+    private static final int    COOK_TICKS        = 200;   // 10 s per item
     private static final int    PARTICLE_INTERVAL  = 20;   // burst every second
     private static final double WALK_SPEED         = 0.6;
     private static final double WORK_REACH_SQ      = 6.25; // 2.5 blocks
@@ -26,6 +46,9 @@ public class ChefWorkGoal extends Goal {
     private final VillagerWorkerEntity chef;
     private int cookTimer        = 0;
     private int particleCooldown = 0;
+
+    /** The ingredient currently being cooked, or null when idle. */
+    @Nullable private Item currentIngredient = null;
 
     public ChefWorkGoal(VillagerWorkerEntity chef) {
         this.chef = chef;
@@ -45,8 +68,9 @@ public class ChefWorkGoal extends Goal {
 
     @Override
     public void stop() {
-        cookTimer = 0;
+        cookTimer        = 0;
         particleCooldown = 0;
+        currentIngredient = null;
     }
 
     @Override
@@ -67,6 +91,7 @@ public class ChefWorkGoal extends Goal {
                         workPos.getX() + 0.5, workPos.getY(), workPos.getZ() + 0.5, WALK_SPEED);
             }
             cookTimer = 0;
+            currentIngredient = null;
             return;
         }
 
@@ -75,15 +100,21 @@ public class ChefWorkGoal extends Goal {
                 workPos.getX() + 0.5, workPos.getY() + 1.0, workPos.getZ() + 0.5, 30f, 30f);
 
         if (cookTimer <= 0) {
-            if (!hasWheat(cooking.getInputContainer()) || !hasOutputSpace(cooking.getOutputContainer())) {
-                // Signal to the golem that this cooking block needs a wheat delivery
+            // Find the first cookable ingredient in the input container
+            currentIngredient = findCookable(cooking.getInputContainer());
+
+            if (currentIngredient == null || !hasOutputSpace(currentIngredient, cooking.getOutputContainer())) {
+                // Signal the golem to bring more ingredients
                 if (!cooking.isNeedsIngredients()) cooking.setNeedsIngredients(true);
+                currentIngredient = null;
                 return;
             }
-            // Wheat is here — clear the request and start cooking
+
+            // Ingredient available — start cooking
             cooking.setNeedsIngredients(false);
-            cookTimer = COOK_TICKS;
+            cookTimer        = COOK_TICKS;
             particleCooldown = PARTICLE_INTERVAL;
+
         } else {
             if (--particleCooldown <= 0) {
                 particleCooldown = PARTICLE_INTERVAL;
@@ -95,34 +126,67 @@ public class ChefWorkGoal extends Goal {
                         0.4f,
                         0.8f + level.getRandom().nextFloat() * 0.4f);
             }
+
             if (--cookTimer <= 0) {
-                if (consumeWheat(cooking.getInputContainer())) {
-                    produceBread(cooking.getOutputContainer());
+                // Re-confirm the ingredient is still there (courier might have taken it)
+                if (currentIngredient == null) {
+                    currentIngredient = findCookable(cooking.getInputContainer());
                 }
+                if (currentIngredient != null && consumeIngredient(currentIngredient, cooking.getInputContainer())) {
+                    produceOutput(currentIngredient, cooking.getOutputContainer());
+                }
+                currentIngredient = null; // reset so next tick re-evaluates
             }
         }
     }
 
-    private static boolean hasWheat(SimpleContainer input) {
+    // ── Ingredient helpers ────────────────────────────────────────────────────
+
+    /**
+     * Returns the first cookable ingredient found in {@code input}, or
+     * {@code null} if the container holds nothing cookable.
+     */
+    @Nullable
+    private static Item findCookable(SimpleContainer input) {
         for (int i = 0; i < input.getContainerSize(); i++) {
-            if (input.getItem(i).is(Items.WHEAT)) return true;
+            ItemStack slot = input.getItem(i);
+            if (slot.isEmpty()) continue;
+            if (isCookable(slot.getItem())) return slot.getItem();
         }
-        return false;
+        return null;
     }
 
-    private static boolean hasOutputSpace(SimpleContainer output) {
+    private static boolean isCookable(Item item) {
+        return item == Items.WHEAT
+            || item == Items.COD
+            || item == Items.SALMON;
+    }
+
+    /** Returns the output item that results from cooking {@code ingredient}. */
+    private static Item outputFor(Item ingredient) {
+        if (ingredient == Items.COD)    return Items.COOKED_COD;
+        if (ingredient == Items.SALMON) return Items.COOKED_SALMON;
+        return Items.BREAD; // WHEAT → BREAD
+    }
+
+    private static boolean hasOutputSpace(Item ingredient, SimpleContainer output) {
+        Item out = outputFor(ingredient);
         for (int i = 0; i < output.getContainerSize(); i++) {
             ItemStack slot = output.getItem(i);
             if (slot.isEmpty()) return true;
-            if (slot.is(Items.BREAD) && slot.getCount() < slot.getMaxStackSize()) return true;
+            if (slot.is(out) && slot.getCount() < slot.getMaxStackSize()) return true;
         }
         return false;
     }
 
-    private static boolean consumeWheat(SimpleContainer input) {
+    /**
+     * Removes one of {@code ingredient} from the input container.
+     * Returns {@code true} if an item was consumed.
+     */
+    private static boolean consumeIngredient(Item ingredient, SimpleContainer input) {
         for (int i = 0; i < input.getContainerSize(); i++) {
             ItemStack slot = input.getItem(i);
-            if (!slot.is(Items.WHEAT)) continue;
+            if (slot.isEmpty() || slot.getItem() != ingredient) continue;
             slot.shrink(1);
             input.setItem(i, slot.isEmpty() ? ItemStack.EMPTY : slot);
             return true;
@@ -130,22 +194,30 @@ public class ChefWorkGoal extends Goal {
         return false;
     }
 
-    private static void produceBread(SimpleContainer output) {
+    /**
+     * Adds one cooked output item to the output container.
+     */
+    private static void produceOutput(Item ingredient, SimpleContainer output) {
+        Item out = outputFor(ingredient);
+        // Merge with existing stack first
         for (int i = 0; i < output.getContainerSize(); i++) {
             ItemStack slot = output.getItem(i);
-            if (slot.is(Items.BREAD) && slot.getCount() < slot.getMaxStackSize()) {
+            if (slot.is(out) && slot.getCount() < slot.getMaxStackSize()) {
                 slot.grow(1);
                 output.setItem(i, slot);
                 return;
             }
         }
+        // Fill an empty slot
         for (int i = 0; i < output.getContainerSize(); i++) {
             if (output.getItem(i).isEmpty()) {
-                output.setItem(i, new ItemStack(Items.BREAD, 1));
+                output.setItem(i, new ItemStack(out, 1));
                 return;
             }
         }
     }
+
+    // ── Particles ─────────────────────────────────────────────────────────────
 
     private static void spawnParticles(BlockPos workPos, ServerLevel level) {
         level.sendParticles(ParticleTypes.SMOKE,

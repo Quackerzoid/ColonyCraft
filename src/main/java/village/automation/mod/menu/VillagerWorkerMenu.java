@@ -8,6 +8,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.DiggerItem;
+import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ShearsItem;
 import net.minecraft.world.item.SwordItem;
@@ -112,7 +113,8 @@ public class VillagerWorkerMenu extends AbstractContainerMenu {
     private static boolean isTool(ItemStack stack) {
         return stack.getItem() instanceof DiggerItem   // pickaxe, axe, shovel, hoe — all tiers
             || stack.getItem() instanceof ShearsItem
-            || stack.getItem() instanceof SwordItem;
+            || stack.getItem() instanceof SwordItem
+            || stack.getItem() instanceof FishingRodItem;
     }
 
     // ── Shift-click ──────────────────────────────────────────────────────────
