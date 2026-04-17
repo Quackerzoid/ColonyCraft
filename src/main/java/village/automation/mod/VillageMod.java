@@ -78,6 +78,7 @@ import village.automation.mod.loot.VillagerSoulLootModifier;
 import village.automation.mod.menu.AnimalPenBlockMenu;
 import village.automation.mod.menu.BrewingBlockMenu;
 import village.automation.mod.menu.CookingBlockMenu;
+import village.automation.mod.menu.CourierMenu;
 import village.automation.mod.menu.EnchantingBlockMenu;
 import village.automation.mod.menu.FarmBlockMenu;
 import village.automation.mod.menu.FishingBlockMenu;
@@ -292,6 +293,11 @@ public class VillageMod {
                             .sized(0.6f, 1.4f)
                             .clientTrackingRange(10)
                             .build(MODID + ":courier"));
+
+    // ── Courier menu ─────────────────────────────────────────────────────────
+    public static final DeferredHolder<MenuType<?>, MenuType<CourierMenu>> COURIER_MENU =
+            MENU_TYPES.register("courier_menu",
+                    () -> IMenuTypeExtension.create(CourierMenu::new));
 
     // ── Courier model layer ──────────────────────────────────────────────────
     public static final ModelLayerLocation COURIER_LAYER =

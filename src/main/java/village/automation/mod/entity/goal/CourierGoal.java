@@ -86,7 +86,7 @@ public class CourierGoal extends Goal {
 
     @Override public boolean canContinueToUse() { return canUse(); }
 
-    @Override public void start() { phase = Phase.IDLE; navTimeout = 0; }
+    @Override public void start() { phase = Phase.IDLE; navTimeout = 0; courier.setCurrentTask("Idle"); }
 
     @Override
     public void stop() {
@@ -169,6 +169,7 @@ public class CourierGoal extends Goal {
                 targetChestPos   = chestPos;
                 targetIngredient = need;
                 targetAmount     = need.count;
+                courier.setCurrentTask("Fetching materials");
                 navigateTo(chestPos);
                 navTimeout = NAV_TIMEOUT;
                 phase      = Phase.FETCH;
@@ -226,6 +227,7 @@ public class CourierGoal extends Goal {
 
             // Chef delivery path: deposit wheat into the cooking block
             if (targetCookingPos != null) {
+                courier.setCurrentTask("Delivering to chef");
                 navigateTo(targetCookingPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.DELIVER_TO_COOKING;
@@ -238,6 +240,7 @@ public class CourierGoal extends Goal {
                         ? level.getEntity(directDeliveryWorkerUUID) : null;
                 if (target instanceof VillagerWorkerEntity worker) {
                     deliveryWorkerUUID = directDeliveryWorkerUUID;
+                    courier.setCurrentTask("Delivering to worker");
                     navigateTo(worker.blockPosition());
                     navTimeout = NAV_TIMEOUT;
                     phase = Phase.DELIVER_TO_WORKER;
@@ -307,6 +310,7 @@ public class CourierGoal extends Goal {
                     deliveryWorkerUUID = smith.getSmithCurrentRequest().getWorkerUUID();
                     Entity target = level.getEntity(deliveryWorkerUUID);
                     if (target instanceof VillagerWorkerEntity worker) {
+                        courier.setCurrentTask("Delivering tool");
                         navigateTo(worker.blockPosition());
                         navTimeout = NAV_TIMEOUT;
                         phase      = Phase.DELIVER_TO_WORKER;
@@ -370,6 +374,7 @@ public class CourierGoal extends Goal {
             if (chestPos == null) { resetToIdle(); return; }
 
             targetChestPos = chestPos;
+            courier.setCurrentTask("Depositing to chest");
             navigateTo(chestPos);
             navTimeout = NAV_TIMEOUT;
             phase = Phase.DEPOSIT_GATHERED;
@@ -434,6 +439,7 @@ public class CourierGoal extends Goal {
             if (chestPos == null) { courier.clearCarried(); resetToIdle(); return; }
 
             targetChestPos = chestPos;
+            courier.setCurrentTask("Depositing to chest");
             navigateTo(chestPos);
             navTimeout = NAV_TIMEOUT;
             phase = Phase.DEPOSIT_GATHERED;
@@ -452,6 +458,7 @@ public class CourierGoal extends Goal {
             if (!(be instanceof CookingBlockEntity cooking)) continue;
             if (!isContainerEmpty(cooking.getOutputContainer())) {
                 targetCookingPos = workPos;
+                courier.setCurrentTask("Collecting from chef");
                 navigateTo(workPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.PICKUP_FROM_COOKING;
@@ -480,6 +487,7 @@ public class CourierGoal extends Goal {
             targetChestPos   = chestPos;
             targetIngredient = wheatIng;
             targetAmount     = 64;
+            courier.setCurrentTask("Fetching for chef");
             navigateTo(chestPos);
             navTimeout = NAV_TIMEOUT;
             phase = Phase.FETCH;
@@ -492,12 +500,14 @@ public class CourierGoal extends Goal {
 
     private void startDepositToSmith(VillagerWorkerEntity smith) {
         courier.getNavigation().moveTo(smith, WALK_SPEED);
+        courier.setCurrentTask("Delivering to smith");
         navTimeout = NAV_TIMEOUT;
         phase      = Phase.DEPOSIT_TO_SMITH;
     }
 
     private void startPickupFromSmith(VillagerWorkerEntity smith) {
         courier.getNavigation().moveTo(smith, WALK_SPEED);
+        courier.setCurrentTask("Collecting from smith");
         navTimeout = NAV_TIMEOUT;
         phase      = Phase.PICKUP_FROM_SMITH;
     }
@@ -523,6 +533,7 @@ public class CourierGoal extends Goal {
             targetChestPos   = chestPos;
             targetIngredient = SmithRecipe.exact(wanted.getItem(), Math.max(1, wanted.getCount()));
             targetAmount     = Math.max(1, wanted.getCount());
+            courier.setCurrentTask("Fetching for worker");
             navigateTo(chestPos);
             navTimeout = NAV_TIMEOUT;
             phase      = Phase.FETCH;
@@ -550,6 +561,7 @@ public class CourierGoal extends Goal {
     private void resetToIdle() {
         courier.getNavigation().stop();
         courier.setUsingChest(false);
+        courier.setCurrentTask("Idle");
         phase      = Phase.IDLE;
         navTimeout = 0;
         idleTick   = 0;
@@ -664,12 +676,14 @@ public class CourierGoal extends Goal {
             BlockEntity be = level.getBlockEntity(workPos);
             if (be instanceof MineBlockEntity mine && !isContainerEmpty(mine.getOutputContainer())) {
                 targetWorkplacePos = workPos;
+                courier.setCurrentTask("Gathering resources");
                 navigateTo(workPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.GATHER_FROM_BLOCK;
                 return true;
             } else if (be instanceof FarmBlockEntity farm && containerHasWheat(farm.getOutputContainer())) {
                 targetWorkplacePos = workPos;
+                courier.setCurrentTask("Gathering resources");
                 navigateTo(workPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.GATHER_FROM_BLOCK;

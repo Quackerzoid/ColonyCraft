@@ -14,11 +14,16 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.goal.CourierGoal;
+import village.automation.mod.menu.CourierMenu;
 
 import javax.annotation.Nullable;
 
@@ -37,6 +42,9 @@ public class CourierEntity extends PathfinderMob {
     private static final EntityDataAccessor<ItemStack> DATA_DISPLAY_ITEM =
             SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.ITEM_STACK);
 
+    private static final EntityDataAccessor<String> DATA_TASK =
+            SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.STRING);
+
     @Nullable
     private BlockPos linkedHeartPos = null;
 
@@ -54,6 +62,7 @@ public class CourierEntity extends PathfinderMob {
         super.defineSynchedData(builder);
         builder.define(DATA_USING_CHEST, false);
         builder.define(DATA_DISPLAY_ITEM, ItemStack.EMPTY);
+        builder.define(DATA_TASK, "Idle");
     }
 
     public boolean isUsingChest() { return entityData.get(DATA_USING_CHEST); }
@@ -62,10 +71,14 @@ public class CourierEntity extends PathfinderMob {
     /** The first carried item, synced to the client for rendering. */
     public ItemStack getDisplayItem() { return entityData.get(DATA_DISPLAY_ITEM); }
 
+    /** Human-readable description of the courier's current task, synced for the GUI. */
+    public String getCurrentTask() { return entityData.get(DATA_TASK); }
+    public void setCurrentTask(String task) { entityData.set(DATA_TASK, task); }
+
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
-                .add(Attributes.MOVEMENT_SPEED, 0.6)
+                .add(Attributes.MOVEMENT_SPEED, 0.24)   // 40 % of original 0.6
                 .add(Attributes.FOLLOW_RANGE, 64.0);
     }
 
@@ -75,6 +88,21 @@ public class CourierEntity extends PathfinderMob {
         this.goalSelector.addGoal(1, new CourierGoal(this));
         this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));
+    }
+
+    // ── Interaction ───────────────────────────────────────────────────────────
+
+    @Override
+    public InteractionResult mobInteract(Player player, InteractionHand hand) {
+        if (!this.level().isClientSide() && player instanceof ServerPlayer sp) {
+            sp.openMenu(
+                    new SimpleMenuProvider(
+                            (id, inv, p) -> new CourierMenu(id, inv, this),
+                            this.getDisplayName()),
+                    buf -> buf.writeInt(this.getId()));
+            return InteractionResult.CONSUME;
+        }
+        return InteractionResult.sidedSuccess(this.level().isClientSide());
     }
 
     // ── Tick ─────────────────────────────────────────────────────────────────
