@@ -1,13 +1,17 @@
 fix animal keeper bugs
 make villagers open doors
+enchanter
+brewer
+butcher & block
+villager levels
+bell functionality
 add golem limit
 add raids
 add raid item thats used to enchant stuff
 add village totem
-villager levels
-enchanter
-brewer
-butcher & block
+make copper golems roam when idle
+
+
 
 
 proper heart gui :
