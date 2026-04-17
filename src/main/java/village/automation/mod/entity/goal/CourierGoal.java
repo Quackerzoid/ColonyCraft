@@ -4,11 +4,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.AABB;
 import village.automation.mod.ItemRequest;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
@@ -74,7 +79,11 @@ public class CourierGoal extends Goal {
         DELIVER_TO_COOKING, PICKUP_FROM_COOKING,
         DELIVER_TO_SMELTER, PICKUP_FROM_SMELTER,
         DELIVER_TO_ANIMAL_PEN,
-        DELIVER_TO_GOLEM
+        DELIVER_TO_GOLEM,
+        /** Leisurely stroll within the village bounds when truly idle. */
+        WANDER,
+        /** Carrying a poppy to a Soul Iron Golem to grant it Strength II. */
+        DELIVER_POPPY
     }
 
     private final CourierEntity courier;
@@ -105,8 +114,15 @@ public class CourierGoal extends Goal {
     private           boolean  smelterDeliverFuel = false;
     /** Animal pen the courier is delivering breeding food to. */
     @Nullable private BlockPos targetAnimalPenPos = null;
-    /** UUID of a SoulIronGolemEntity the courier is delivering iron to. */
+    /** UUID of a SoulIronGolemEntity the courier is delivering iron or a poppy to. */
     @Nullable private java.util.UUID targetGolemUUID = null;
+
+    /** Total ticks spent in IDLE phase since last task — drives the wander trigger. */
+    private int totalIdleTicks = 0;
+    /** Rate-limit counter within the WANDER phase (mirrors {@code idleTick}). */
+    private int wanderCheckTick = 0;
+    /** Destination for the current wander leg. */
+    @Nullable private BlockPos wanderTarget = null;
 
     public CourierGoal(CourierEntity courier) {
         this.courier = courier;
@@ -161,12 +177,17 @@ public class CourierGoal extends Goal {
             case PICKUP_FROM_SMELTER -> tickPickupFromSmelter(level);
             case DELIVER_TO_ANIMAL_PEN -> tickDeliverToAnimalPen(level);
             case DELIVER_TO_GOLEM      -> tickDeliverToGolem(level);
+            case WANDER                -> tickWander(level);
+            case DELIVER_POPPY         -> tickDeliverPoppy(level);
         }
     }
 
     // ── IDLE ──────────────────────────────────────────────────────────────────
 
     private void tickIdle(ServerLevel level) {
+        // Always count ticks so the wander timer runs even between checks.
+        totalIdleTicks++;
+
         // Rate-limit idle checks to every 20 ticks
         if (++idleTick < 20) return;
         idleTick = 0;
@@ -196,7 +217,10 @@ public class CourierGoal extends Goal {
         if (tryStartPickupFromCooking(level)) return;
         if (tryStartPickupFromSmelter(level)) return;
         if (tryStartAnimalPenFood(level)) return;
-        tryStartGathering(level);
+        if (tryStartGathering(level)) return;
+
+        // Nothing to do — after 15 seconds of true idleness, take a stroll.
+        if (totalIdleTicks >= 300) tryStartWander(level);
     }
 
     // ── Smith work ────────────────────────────────────────────────────────────
@@ -1066,7 +1090,7 @@ public class CourierGoal extends Goal {
         for (village.automation.mod.entity.SoulIronGolemEntity golem :
                 level.getEntitiesOfClass(
                         village.automation.mod.entity.SoulIronGolemEntity.class,
-                        new net.minecraft.world.phys.AABB(heartPos).inflate(heart.getRadius() + 32))) {
+                        new AABB(heartPos).inflate(heart.getRadius() + 32))) {
             if (!golem.isAlive()) continue;
             if (!golem.isRepairing()) continue;
             if (!heartPos.equals(golem.getLinkedHeartPos())) continue;
@@ -1137,6 +1161,187 @@ public class CourierGoal extends Goal {
         resetToIdle();
     }
 
+    // ── WANDER ────────────────────────────────────────────────────────────────
+
+    /**
+     * Picks a random walkable point within the village radius and starts
+     * navigating toward it, entering the WANDER phase.
+     *
+     * @return {@code true} if a wander leg was successfully started
+     */
+    private boolean tryStartWander(ServerLevel level) {
+        if (courier.isCarryingAnything()) { totalIdleTicks = 0; return false; }
+        BlockPos heartPos = courier.getLinkedHeartPos();
+        if (heartPos == null) { totalIdleTicks = 0; return false; }
+
+        VillageHeartBlockEntity heart = getHeart(level);
+        int radius = heart != null ? Math.min(heart.getRadius(), 48) : 32;
+
+        var rng = courier.getRandom();
+        for (int attempt = 0; attempt < 10; attempt++) {
+            double angle = rng.nextDouble() * Math.PI * 2.0;
+            double dist  = (0.3 + rng.nextDouble() * 0.7) * radius; // 30–100 % of radius
+            int    dx    = (int) (Math.sin(angle) * dist);
+            int    dz    = (int) (Math.cos(angle) * dist);
+
+            // Find the surface at that column
+            BlockPos surface = level.getHeightmapPos(
+                    Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    heartPos.offset(dx, 0, dz));
+
+            // moveTo returns true if a valid path was found
+            if (courier.getNavigation().moveTo(
+                    surface.getX() + 0.5, surface.getY(), surface.getZ() + 0.5,
+                    WALK_SPEED)) {
+                wanderTarget   = surface;
+                navTimeout     = 300; // 15 s to reach the wander destination
+                phase          = Phase.WANDER;
+                totalIdleTicks = 0;
+                courier.setCurrentTask("Wandering");
+                return true;
+            }
+        }
+        // Couldn't find a path — reset timer so we try again after another 15 s
+        totalIdleTicks = 0;
+        return false;
+    }
+
+    /**
+     * Handles the WANDER phase.  Higher-priority tasks preempt wandering
+     * immediately.  While walking, the courier occasionally looks for nearby
+     * poppies to deliver to a Soul Iron Golem.
+     */
+    private void tickWander(ServerLevel level) {
+        // Rate-limit expensive checks to every 20 ticks
+        if (++wanderCheckTick < 20) {
+            // Still check if we've arrived, so we don't overshoot
+            if (wanderTarget != null && courier.getNavigation().isDone()) {
+                resetToIdle();
+            }
+            return;
+        }
+        wanderCheckTick = 0;
+
+        // Higher-priority tasks always win
+        if (tryStartDirectDelivery(level)) return;
+        if (tryStartSmithWork(level)) return;
+        if (tryStartChefIngredients(level)) return;
+        if (tryStartSmelterDelivery(level)) return;
+        if (tryStartGolemRepair(level)) return;
+
+        // Random chance to scan for poppies — ~33 % per second-ish check
+        if (courier.getRandom().nextInt(3) == 0 && tryPickupPoppy(level)) return;
+
+        // Done walking — return to idle for re-evaluation
+        if (courier.getNavigation().isDone()) {
+            resetToIdle();
+        }
+    }
+
+    /**
+     * Searches the area around the courier for a poppy flower block.
+     * If one is found and a linked {@link village.automation.mod.entity.SoulIronGolemEntity}
+     * exists, breaks the block and starts the DELIVER_POPPY phase.
+     *
+     * @return {@code true} if delivery was started
+     */
+    private boolean tryPickupPoppy(ServerLevel level) {
+        BlockPos origin = courier.blockPosition();
+        final int r = 8;
+        BlockPos poppyPos = null;
+
+        search:
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                for (int dy = -1; dy <= 2; dy++) {
+                    BlockPos check = origin.offset(dx, dy, dz);
+                    if (level.getBlockState(check).is(Blocks.POPPY)) {
+                        poppyPos = check;
+                        break search;
+                    }
+                }
+            }
+        }
+        if (poppyPos == null) return false;
+
+        // Look for any linked golem to receive the poppy
+        village.automation.mod.entity.SoulIronGolemEntity golem = findNearbyLinkedGolem(level);
+        if (golem == null) return false;
+
+        // Break the flower, place it in the courier's hand, and start delivery
+        level.removeBlock(poppyPos, false);
+        courier.getCarriedInventory().setItem(0, new ItemStack(Items.POPPY));
+        targetGolemUUID = golem.getUUID();
+        wanderTarget    = null;
+        courier.setCurrentTask("Delivering poppy");
+        courier.getNavigation().moveTo(golem, WALK_SPEED);
+        navTimeout = NAV_TIMEOUT;
+        phase      = Phase.DELIVER_POPPY;
+        return true;
+    }
+
+    /**
+     * Returns the nearest alive {@link village.automation.mod.entity.SoulIronGolemEntity}
+     * that is linked to the same village heart, or {@code null} if none found.
+     */
+    @Nullable
+    private village.automation.mod.entity.SoulIronGolemEntity findNearbyLinkedGolem(
+            ServerLevel level) {
+        BlockPos heartPos = courier.getLinkedHeartPos();
+        if (heartPos == null) return null;
+        VillageHeartBlockEntity heart = getHeart(level);
+        double searchRadius = heart != null ? heart.getRadius() + 32.0 : 64.0;
+
+        village.automation.mod.entity.SoulIronGolemEntity nearest = null;
+        double bestDistSq = Double.MAX_VALUE;
+        for (village.automation.mod.entity.SoulIronGolemEntity g :
+                level.getEntitiesOfClass(
+                        village.automation.mod.entity.SoulIronGolemEntity.class,
+                        new AABB(heartPos).inflate(searchRadius))) {
+            if (!g.isAlive()) continue;
+            if (!heartPos.equals(g.getLinkedHeartPos())) continue;
+            double d = courier.distanceToSqr(g);
+            if (d < bestDistSq) { bestDistSq = d; nearest = g; }
+        }
+        return nearest;
+    }
+
+    /**
+     * Walks to the target golem and, on arrival, applies
+     * <b>Strength II</b> for one minute (1 200 ticks).
+     */
+    private void tickDeliverPoppy(ServerLevel level) {
+        if (targetGolemUUID == null) { courier.clearCarried(); resetToIdle(); return; }
+
+        Entity e = level.getEntity(targetGolemUUID);
+        if (!(e instanceof village.automation.mod.entity.SoulIronGolemEntity golem)
+                || !golem.isAlive()) {
+            targetGolemUUID = null;
+            courier.clearCarried();
+            resetToIdle();
+            return;
+        }
+
+        if (distSqTo(golem.blockPosition()) > REACH_SQ) {
+            if (courier.getNavigation().isDone()) {
+                courier.getNavigation().moveTo(golem, WALK_SPEED);
+            }
+            return;
+        }
+
+        // At the golem — hand over the poppy and apply Strength II for 60 seconds
+        courier.clearCarried();
+        golem.addEffect(new MobEffectInstance(
+                MobEffects.DAMAGE_BOOST,
+                1200,  // 60 s = 1 200 ticks
+                1,     // amplifier 1 = Strength II
+                false,
+                true));
+
+        targetGolemUUID = null;
+        resetToIdle();
+    }
+
     // ── Reset ─────────────────────────────────────────────────────────────────
 
     private void resetToIdle() {
@@ -1155,6 +1360,9 @@ public class CourierGoal extends Goal {
         smelterDeliverFuel       = false;
         targetAnimalPenPos       = null;
         targetGolemUUID          = null;
+        totalIdleTicks           = 0;
+        wanderCheckTick          = 0;
+        wanderTarget             = null;
     }
 
     /**
