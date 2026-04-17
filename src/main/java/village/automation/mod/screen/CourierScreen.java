@@ -13,23 +13,23 @@ import village.automation.mod.menu.CourierMenu;
 /**
  * Display-only GUI shown when a player right-clicks the courier.
  *
- * <p>Layout (panel-relative coordinates):
+ * <p>Layout — main panel (panel-relative coordinates):
  * <pre>
- *  Main panel (176 × 80)          Entity panel (76 × 80, 2 px gap)
- *  ───────────────────────         ────────────────────────────────
- *  y= 0  top border                y= 0  top border
- *  y= 6  "Current Task" label      y= 5  courier name (centred)
- *  y=18  task description          y=17  decorative rule
- *  y=31  divider                   y=17─63  3-D courier model
- *  y=36  "Carrying" label          y=63  decorative rule
- *  y=52  9 read-only item slots    y=80  bottom border
- *  y=68  bottom of slots
+ *  Normal variant (176 × 80)        Ender variant (176 × 104)
+ *  ────────────────────────          ─────────────────────────
+ *  y= 0  top border                  … same as normal …
+ *  y= 6  "Current Task" label        y=80  divider
+ *  y=18  task description            y=83  "Teleport Cooldown" (gray)
+ *  y=31  divider                     y=83  time-remaining (right-aligned)
+ *  y=36  "Carrying" label            y=93  cooldown bar (8 px)
+ *  y=52  9 read-only item slots     y=104  bottom border
  *  y=80  bottom border
  * </pre>
+ * Entity panel (76 × mainH, 2 px gap to the right) scales with mainH.
  */
 public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
 
-    // ── Colour palette (matches the rest of the mod's screens) ───────────────
+    // ── Colour palette ────────────────────────────────────────────────────────
     private static final int COL_BG        = 0xFF3B3B3B;
     private static final int COL_BORDER_LT = 0xFF666666;
     private static final int COL_BORDER_DK = 0xFF1A1A1A;
@@ -37,24 +37,39 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
     private static final int COL_SLOT_DK   = 0xFF373737;
     private static final int COL_SLOT_LT   = 0xFF8B8B8B;
 
-    // ── Entity panel colours (slightly darker inset) ──────────────────────────
+    // ── Entity panel colours ──────────────────────────────────────────────────
     private static final int COL_EP_BG     = 0xFF252525;
     private static final int COL_EP_BDR_LT = 0xFF555555;
     private static final int COL_EP_BDR_DK = 0xFF111111;
 
-    // ── Dimensions ───────────────────────────────────────────────────────────
-    private static final int MAIN_W = 176;
-    private static final int MAIN_H = 80;
-    private static final int EP_GAP = 2;
-    private static final int EP_W   = 104;               // wide enough for "Copper Soul Golem"
-    private static final int EP_X   = MAIN_W + EP_GAP;   // 178, panel-relative
+    // ── Teleport bar colours ──────────────────────────────────────────────────
+    private static final int COL_BAR_BG    = 0xFF222222;
+    private static final int COL_BAR_READY = 0xFF00EE88;   // green tinge when ≥ 90 % charged
+    private static final int COL_BAR_FILL  = 0xFF7722EE;   // ender purple
+
+    // ── Fixed dimensions ──────────────────────────────────────────────────────
+    private static final int MAIN_W       = 176;
+    private static final int MAIN_H_BASE  = 80;            // normal-variant height
+    private static final int MAIN_H_ENDER = 104;           // extra 24 px for teleport section
+    private static final int EP_GAP       = 2;
+    private static final int EP_W         = 104;
+    private static final int EP_X         = MAIN_W + EP_GAP;  // panel-relative x of entity panel
 
     private static final int ENTITY_SCALE = 35;
 
+    // ── Instance fields ───────────────────────────────────────────────────────
+    /** Actual panel height — 80 for normal couriers, 104 for ender variant. */
+    private final int mainH;
+    /** Cached flag so we avoid repeated entity look-ups in every render call. */
+    private final boolean isEnder;
+
     public CourierScreen(CourierMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth      = MAIN_W + EP_GAP + EP_W;   // 254
-        this.imageHeight     = MAIN_H;                    // 80
+        CourierEntity courier = menu.getCourier();
+        this.isEnder         = courier != null && courier.isEnderVariant();
+        this.mainH           = isEnder ? MAIN_H_ENDER : MAIN_H_BASE;
+        this.imageWidth      = MAIN_W + EP_GAP + EP_W;   // 282
+        this.imageHeight     = mainH;
         // Suppress the default title and inventory labels — we draw our own.
         this.titleLabelX     = -999;
         this.titleLabelY     = -999;
@@ -68,14 +83,14 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
         final int x = this.leftPos;
         final int y = this.topPos;
 
-        // ── Main panel background + bevel border ─────────────────────────────
-        g.fill(x + 1,          y + 1,          x + MAIN_W - 1, y + MAIN_H - 1, COL_BG);
+        // ── Main panel background + bevel border ──────────────────────────────
+        g.fill(x + 1,          y + 1,          x + MAIN_W - 1, y + mainH - 1, COL_BG);
         g.fill(x,              y,               x + MAIN_W,     y + 1,          COL_BORDER_LT);
-        g.fill(x,              y,               x + 1,          y + MAIN_H,     COL_BORDER_LT);
-        g.fill(x,              y + MAIN_H - 1, x + MAIN_W,     y + MAIN_H,     COL_BORDER_DK);
-        g.fill(x + MAIN_W - 1, y,              x + MAIN_W,     y + MAIN_H,     COL_BORDER_DK);
+        g.fill(x,              y,               x + 1,          y + mainH,      COL_BORDER_LT);
+        g.fill(x,              y + mainH - 1,  x + MAIN_W,     y + mainH,      COL_BORDER_DK);
+        g.fill(x + MAIN_W - 1, y,              x + MAIN_W,     y + mainH,      COL_BORDER_DK);
 
-        // ── Main panel divider ────────────────────────────────────────────────
+        // ── Main panel divider (below task) ───────────────────────────────────
         g.fill(x + 4, y + 31, x + MAIN_W - 4, y + 32, COL_DIVIDER);
 
         // ── Slot backgrounds ──────────────────────────────────────────────────
@@ -86,28 +101,54 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
             g.fill(sx,     sy,     sx + 16, sy + 16, COL_SLOT_LT);
         }
 
+        // ── Ender teleport section ────────────────────────────────────────────
+        if (isEnder) {
+            // Divider separating the carry area from the teleport section
+            g.fill(x + 4, y + 80, x + MAIN_W - 4, y + 81, COL_DIVIDER);
+
+            // Cooldown bar (y=93, height 8 px)
+            final int barX = x + 8;
+            final int barY = y + 93;
+            final int barW = MAIN_W - 16;
+
+            // Dark background trough
+            g.fill(barX - 1, barY - 1, barX + barW + 1, barY + 9, COL_BAR_BG);
+
+            // Filled portion — progress goes from 0 (just reset) → 1 (ready to fire)
+            CourierEntity courier = this.menu.getCourier();
+            int cooldown = courier != null ? courier.getEnderTeleportCooldown() : 0;
+            int interval = CourierEntity.ENDER_TELEPORT_INTERVAL;
+            float progress  = 1.0f - (cooldown / (float) interval);
+            int   fillW     = Math.max(0, (int) (barW * progress));
+            boolean nearReady = progress >= 0.9f;
+            int barColor = nearReady ? COL_BAR_READY : COL_BAR_FILL;
+            if (fillW > 0) {
+                g.fill(barX, barY, barX + fillW, barY + 8, barColor);
+            }
+        }
+
         // ── Entity panel background + bevel border ────────────────────────────
         final int pL = x + EP_X;
         final int pT = y;
         final int pR = pL + EP_W;
-        final int pB = y + MAIN_H;
+        final int pB = y + mainH;
         g.fill(pL + 1, pT + 1, pR - 1, pB - 1, COL_EP_BG);
-        g.fill(pL,     pT,     pR,     pT + 1, COL_EP_BDR_LT);
-        g.fill(pL,     pT,     pL + 1, pB,     COL_EP_BDR_LT);
-        g.fill(pL,     pB - 1, pR,     pB,     COL_EP_BDR_DK);
-        g.fill(pR - 1, pT,     pR,     pB,     COL_EP_BDR_DK);
+        g.fill(pL,     pT,     pR,     pT + 1,  COL_EP_BDR_LT);
+        g.fill(pL,     pT,     pL + 1, pB,      COL_EP_BDR_LT);
+        g.fill(pL,     pB - 1, pR,     pB,      COL_EP_BDR_DK);
+        g.fill(pR - 1, pT,     pR,     pB,      COL_EP_BDR_DK);
 
-        // Decorative rules framing the model area
+        // Decorative rules framing the model area (always relative to panel top/bottom)
         g.fill(pL + 4, pT + 17, pR - 4, pT + 18, COL_DIVIDER);
         g.fill(pL + 4, pB - 18, pR - 4, pB - 17, COL_DIVIDER);
     }
 
     @Override
     protected void renderLabels(GuiGraphics g, int mx, int my) {
-        final int maxW    = MAIN_W - 16;
+        final int maxW      = MAIN_W - 16;
         final int ellipsisW = this.font.width("\u2026");
 
-        // ── Current Task ─────────────────────────────────────────────────────
+        // ── Current Task ──────────────────────────────────────────────────────
         g.drawString(this.font,
                 Component.literal("Current Task").withStyle(ChatFormatting.GRAY),
                 8, 6, 0xAAAAAA, false);
@@ -124,6 +165,30 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
         g.drawString(this.font,
                 Component.literal("Carrying").withStyle(ChatFormatting.GRAY),
                 8, 36, 0xAAAAAA, false);
+
+        // ── Ender: teleport cooldown labels ───────────────────────────────────
+        if (isEnder) {
+            g.drawString(this.font,
+                    Component.literal("Teleport Cooldown").withStyle(ChatFormatting.GRAY),
+                    8, 83, 0xAAAAAA, false);
+
+            // Right-aligned time remaining
+            CourierEntity courier = this.menu.getCourier();
+            int cooldown = courier != null ? courier.getEnderTeleportCooldown() : 0;
+            String timeStr;
+            int    timeColor;
+            if (cooldown <= 0) {
+                timeStr   = "Ready!";
+                timeColor = 0x00EE88;
+            } else {
+                float secs = cooldown / 20.0f;
+                timeStr   = String.format("%.1f s", secs);
+                boolean nearReady = cooldown <= CourierEntity.ENDER_TELEPORT_INTERVAL * 0.1f;
+                timeColor = nearReady ? 0x00EE88 : 0xAAAAAA;
+            }
+            int timeX = MAIN_W - 8 - this.font.width(timeStr);
+            g.drawString(this.font, Component.literal(timeStr), timeX, 83, timeColor, false);
+        }
 
         // ── Entity panel: courier name (centred at top) ───────────────────────
         CourierEntity courier = this.menu.getCourier();
@@ -151,7 +216,7 @@ public class CourierScreen extends AbstractContainerScreen<CourierMenu> {
             final int pL = this.leftPos + EP_X + 2;
             final int pT = this.topPos  + 19;
             final int pR = this.leftPos + EP_X + EP_W - 2;
-            final int pB = this.topPos  + MAIN_H - 19;
+            final int pB = this.topPos  + mainH - 19;
             g.enableScissor(pL, pT, pR, pB);
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     g, pL, pT, pR, pB, ENTITY_SCALE, 0.0f, mx, my, courier);

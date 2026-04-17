@@ -279,6 +279,11 @@ public class VillageMod {
     public static final DeferredItem<Item> VILLAGER_SOUL =
             ITEMS.registerSimpleItem("villager_soul", new Item.Properties().stacksTo(64));
 
+    // ── Soul Eye ──────────────────────────────────────────────────────────────
+    // Used to upgrade a Soul Copper Golem into the Ender Soul Copper Golem variant
+    public static final DeferredItem<Item> SOUL_EYE =
+            ITEMS.registerSimpleItem("soul_eye", new Item.Properties().stacksTo(16));
+
     // ── Village Wand ─────────────────────────────────────────────────────────
     public static final DeferredItem<VillageWandItem> VILLAGE_WAND =
             ITEMS.register("village_wand",
@@ -374,6 +379,7 @@ public class VillageMod {
                         output.accept(BUNDLE_OF_WHEAT.get());
                         output.accept(VILLAGE_WAND.get());
                         output.accept(VILLAGER_SOUL.get());
+                        output.accept(SOUL_EYE.get());
                         output.accept(VILLAGE_UPGRADE.get());
                         output.accept(VILLAGE_UPGRADE_II.get());
                         output.accept(VILLAGE_UPGRADE_III.get());

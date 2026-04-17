@@ -6,7 +6,13 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -14,13 +20,11 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.pathfinder.Node;
+import net.minecraft.world.level.pathfinder.Path;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.goal.CourierGoal;
 import village.automation.mod.menu.CourierMenu;
@@ -45,6 +49,17 @@ public class CourierEntity extends PathfinderMob {
     private static final EntityDataAccessor<String> DATA_TASK =
             SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.STRING);
 
+    /** True once the courier has been upgraded with a Soul Eye. Synced so the renderer can swap the texture. */
+    private static final EntityDataAccessor<Boolean> DATA_ENDER =
+            SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.BOOLEAN);
+
+    /** Remaining ticks until the next ender teleport, synced to clients for the GUI progress bar. */
+    private static final EntityDataAccessor<Integer> DATA_ENDER_COOLDOWN =
+            SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.INT);
+
+    /** Ticks until the next ender teleport. Server-side authoritative value. */
+    private int enderTeleportCooldown = ENDER_TELEPORT_INTERVAL;
+
     @Nullable
     private BlockPos linkedHeartPos = null;
 
@@ -63,6 +78,8 @@ public class CourierEntity extends PathfinderMob {
         builder.define(DATA_USING_CHEST, false);
         builder.define(DATA_DISPLAY_ITEM, ItemStack.EMPTY);
         builder.define(DATA_TASK, "Idle");
+        builder.define(DATA_ENDER, false);
+        builder.define(DATA_ENDER_COOLDOWN, ENDER_TELEPORT_INTERVAL);
     }
 
     public boolean isUsingChest() { return entityData.get(DATA_USING_CHEST); }
@@ -74,6 +91,20 @@ public class CourierEntity extends PathfinderMob {
     /** Human-readable description of the courier's current task, synced for the GUI. */
     public String getCurrentTask() { return entityData.get(DATA_TASK); }
     public void setCurrentTask(String task) { entityData.set(DATA_TASK, task); }
+
+    /** True when the courier has been upgraded into the Ender Soul Copper Golem variant. */
+    public boolean isEnderVariant() { return entityData.get(DATA_ENDER); }
+    public void setEnderVariant(boolean v) { entityData.set(DATA_ENDER, v); }
+
+    /** Remaining ticks until the next ender teleport (client-readable). */
+    public int getEnderTeleportCooldown() { return entityData.get(DATA_ENDER_COOLDOWN); }
+
+    @Override
+    public net.minecraft.network.chat.Component getDisplayName() {
+        return isEnderVariant()
+                ? net.minecraft.network.chat.Component.translatable("entity.colonycraft.courier_ender")
+                : super.getDisplayName();
+    }
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
@@ -94,6 +125,25 @@ public class CourierEntity extends PathfinderMob {
 
     @Override
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
+        // Crouch + Soul Eye → upgrade to Ender Soul Copper Golem
+        if (player.isShiftKeyDown()) {
+            ItemStack held = player.getItemInHand(hand);
+            if (held.is(VillageMod.SOUL_EYE.get())) {
+                if (!this.level().isClientSide()) {
+                    if (!isEnderVariant()) {
+                        setEnderVariant(true);
+                        if (!player.getAbilities().instabuild) held.shrink(1);
+                        this.level().playSound(null,
+                                this.getX(), this.getY(), this.getZ(),
+                                SoundEvents.ENDERMAN_TELEPORT,
+                                this.getSoundSource(), 1.0f, 1.0f);
+                    }
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide());
+            }
+        }
+
+        // Normal right-click → open status UI
         if (!this.level().isClientSide() && player instanceof ServerPlayer sp) {
             sp.openMenu(
                     new SimpleMenuProvider(
@@ -106,6 +156,9 @@ public class CourierEntity extends PathfinderMob {
     }
 
     // ── Tick ─────────────────────────────────────────────────────────────────
+
+    /** Ticks between ender teleports (40 s). Public so the GUI can compute bar progress. */
+    public static final int ENDER_TELEPORT_INTERVAL = 800;
 
     @Override
     public void tick() {
@@ -122,6 +175,41 @@ public class CourierEntity extends PathfinderMob {
             }
             if (!ItemStack.matches(entityData.get(DATA_DISPLAY_ITEM), display)) {
                 entityData.set(DATA_DISPLAY_ITEM, display.copy());
+            }
+
+            // Ender variant: teleport to the current navigation destination every 40 s.
+            if (isEnderVariant() && this.level() instanceof ServerLevel serverLevel) {
+                if (--enderTeleportCooldown <= 0) {
+                    Path path = this.getNavigation().getPath();
+                    boolean hastarget = path != null && !this.getNavigation().isDone()
+                            && path.getEndNode() != null;
+
+                    if (hastarget) {
+                        Node end = path.getEndNode();
+                        // Portal burst at departure position
+                        serverLevel.sendParticles(ParticleTypes.PORTAL,
+                                this.getX(), this.getY() + 0.5, this.getZ(),
+                                20, 0.3, 0.5, 0.3, 0.1);
+                        this.teleportTo(end.x + 0.5, end.y, end.z + 0.5);
+                        this.getNavigation().stop();
+                        // Portal burst at arrival position
+                        serverLevel.sendParticles(ParticleTypes.PORTAL,
+                                this.getX(), this.getY() + 0.5, this.getZ(),
+                                20, 0.3, 0.5, 0.3, 0.1);
+                        serverLevel.playSound(null,
+                                this.getX(), this.getY(), this.getZ(),
+                                SoundEvents.ENDERMAN_TELEPORT,
+                                this.getSoundSource(), 0.6f, 1.0f);
+                    }
+
+                    // Always reset so the cooldown bar keeps cycling
+                    enderTeleportCooldown = ENDER_TELEPORT_INTERVAL;
+                }
+
+                // Keep synced data in step for the GUI progress bar
+                if (entityData.get(DATA_ENDER_COOLDOWN) != enderTeleportCooldown) {
+                    entityData.set(DATA_ENDER_COOLDOWN, enderTeleportCooldown);
+                }
             }
         }
     }
@@ -146,20 +234,23 @@ public class CourierEntity extends PathfinderMob {
         int     period  = moving ? 2 : 3;
 
         if (this.tickCount % period == 0) {
+            // Ender variant emits reverse-portal (purple/violet) wisps instead of soul fire.
+            var flameType = isEnderVariant() ? ParticleTypes.REVERSE_PORTAL : ParticleTypes.SOUL_FIRE_FLAME;
             this.level().addParticle(
-                    ParticleTypes.SOUL_FIRE_FLAME,
+                    flameType,
                     this.getX() + (rng.nextDouble() - 0.5) * hw * 2,
-                    this.getY() + rng.nextDouble() * h * 0.45,   // lower 45 % of body
+                    this.getY() + rng.nextDouble() * h * 0.45,
                     this.getZ() + (rng.nextDouble() - 0.5) * hw * 2,
-                    (rng.nextDouble() - 0.5) * 0.02,             // slight horizontal drift
-                    rng.nextDouble() * 0.04 + 0.02,              // gentle upward float
+                    (rng.nextDouble() - 0.5) * 0.02,
+                    rng.nextDouble() * 0.04 + 0.02,
                     (rng.nextDouble() - 0.5) * 0.02);
         }
 
-        // One large soul particle every 2 seconds — rises from the feet.
+        // One large soul/portal particle every 2 seconds — rises from the feet.
         if (this.tickCount % 40 == 0) {
+            var soulType = isEnderVariant() ? ParticleTypes.PORTAL : ParticleTypes.SOUL;
             this.level().addParticle(
-                    ParticleTypes.SOUL,
+                    soulType,
                     this.getX() + (rng.nextDouble() - 0.5) * hw * 2,
                     this.getY() + rng.nextDouble() * 0.2,
                     this.getZ() + (rng.nextDouble() - 0.5) * hw * 2,
@@ -204,6 +295,7 @@ public class CourierEntity extends PathfinderMob {
             tag.putInt("HeartY", linkedHeartPos.getY());
             tag.putInt("HeartZ", linkedHeartPos.getZ());
         }
+        tag.putBoolean("IsEnder", isEnderVariant());
     }
 
     @Override
@@ -212,6 +304,9 @@ public class CourierEntity extends PathfinderMob {
         if (tag.contains("HeartX")) {
             linkedHeartPos = new BlockPos(tag.getInt("HeartX"), tag.getInt("HeartY"), tag.getInt("HeartZ"));
             this.restrictTo(linkedHeartPos, 96);
+        }
+        if (tag.contains("IsEnder")) {
+            setEnderVariant(tag.getBoolean("IsEnder"));
         }
     }
 }

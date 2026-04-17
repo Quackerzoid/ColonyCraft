@@ -24,6 +24,9 @@ public class CourierRenderer extends MobRenderer<CourierEntity, CourierModel<Cou
     private static final ResourceLocation TEXTURE =
             ResourceLocation.fromNamespaceAndPath(VillageMod.MODID, "textures/entity/courier.png");
 
+    private static final ResourceLocation ENDER_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(VillageMod.MODID, "textures/entity/courier_ender.png");
+
     /** Only render the task tag within this distance (squared, in blocks). 32 blocks = 1024. */
     private static final double TASK_TAG_DIST_SQ = 1024.0;
 
@@ -34,7 +37,7 @@ public class CourierRenderer extends MobRenderer<CourierEntity, CourierModel<Cou
 
     @Override
     public ResourceLocation getTextureLocation(CourierEntity entity) {
-        return TEXTURE;
+        return entity.isEnderVariant() ? ENDER_TEXTURE : TEXTURE;
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────────
