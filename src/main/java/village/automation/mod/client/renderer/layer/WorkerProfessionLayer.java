@@ -63,6 +63,8 @@ public class WorkerProfessionLayer
             ResourceLocation.fromNamespaceAndPath(VillageMod.MODID, "textures/entity/librarian.png");
     private static final ResourceLocation PROF_CLERIC =
             ResourceLocation.fromNamespaceAndPath(VillageMod.MODID, "textures/entity/cleric.png");
+    private static final ResourceLocation PROF_TOOLSMITH =
+            ResourceLocation.fromNamespaceAndPath(VillageMod.MODID, "textures/entity/toolsmith.png");
 
     public WorkerProfessionLayer(
             RenderLayerParent<VillagerWorkerEntity, VillagerModel<VillagerWorkerEntity>> parent) {
@@ -122,6 +124,11 @@ public class WorkerProfessionLayer
                 // Swamp cleric — alchemy and mysticism
                 overlay(poseStack, bufferSource, packedLight, entity, TYPE_SWAMP);
                 overlay(poseStack, bufferSource, packedLight, entity, PROF_CLERIC);
+            }
+            case SMELTER -> {
+                // Plains toolsmith — forge/smelting aesthetic
+                overlay(poseStack, bufferSource, packedLight, entity, TYPE_PLAINS);
+                overlay(poseStack, bufferSource, packedLight, entity, PROF_TOOLSMITH);
             }
             default -> { /* no overlay defined yet */ }
         }

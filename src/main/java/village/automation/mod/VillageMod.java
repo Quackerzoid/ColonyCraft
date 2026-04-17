@@ -165,7 +165,8 @@ public class VillageMod {
     // ── Lumbermill Block ─────────────────────────────────────────────────────
     public static final DeferredBlock<LumbermillBlock> LUMBERMILL = BLOCKS.register("lumbermill",
             () -> new LumbermillBlock(BlockBehaviour.Properties.of()
-                    .mapColor(MapColor.WOOD).strength(2.5f).requiresCorrectToolForDrops()));
+                    .mapColor(MapColor.WOOD).strength(2.5f).requiresCorrectToolForDrops()
+                    .noOcclusion()));
     public static final DeferredItem<BlockItem> LUMBERMILL_ITEM =
             ITEMS.registerSimpleBlockItem("lumbermill", LUMBERMILL);
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<LumbermillBlockEntity>> LUMBERMILL_BE =
