@@ -1,6 +1,38 @@
 {
-  "parent": "minecraft:block/cube_all",
+  "parent": "minecraft:block/block",
   "textures": {
-    "all": "colonycraft:block/enchanting_block"
-  }
+    "0":        "minecraft:block/amethyst_block",
+    "1":        "minecraft:block/enchanting_table_bottom",
+    "2":        "minecraft:block/enchanting_table_side",
+    "3":        "minecraft:block/enchanting_table_top",
+    "particle": "minecraft:block/amethyst_block"
+  },
+  "elements": [
+    {
+      "comment": "Table base — half-block slab using enchanting table textures",
+      "from": [0, 0, 0],
+      "to":   [16, 8, 16],
+      "faces": {
+        "north": { "uv": [0, 4, 16, 12], "texture": "#2" },
+        "east":  { "uv": [0, 4, 16, 12], "texture": "#2" },
+        "south": { "uv": [0, 4, 16, 12], "texture": "#2" },
+        "west":  { "uv": [0, 4, 16, 12], "texture": "#2" },
+        "up":    { "uv": [0, 0, 16, 16], "texture": "#3" },
+        "down":  { "uv": [0, 0, 16, 16], "texture": "#1", "cullface": "down" }
+      }
+    },
+    {
+      "comment": "Floating amethyst crystal above the base",
+      "from": [7, 10, 7],
+      "to":   [9, 12, 9],
+      "faces": {
+        "north": { "uv": [4, 6, 6, 8], "texture": "#0" },
+        "east":  { "uv": [6, 6, 8, 8], "texture": "#0" },
+        "south": { "uv": [4, 4, 6, 6], "texture": "#0" },
+        "west":  { "uv": [1, 4, 3, 6], "texture": "#0" },
+        "up":    { "uv": [2, 6, 4, 8], "texture": "#0" },
+        "down":  { "uv": [6, 4, 8, 6], "texture": "#0" }
+      }
+    }
+  ]
 }
