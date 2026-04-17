@@ -7,7 +7,10 @@ villager levels
 bell functionality
 bell golem - when another golem enters combat or he does go ring the bell then patrol the bell and protect
 add golem limit
-add raids
+add raids 
+	- Illager Raids (Special Item for Enchanter)
+	- Piglin Raids ()
+	- Zombie Horde Raid (Villager Totem Reward)
 add raid item thats used to enchant stuff
 add village totem
 
