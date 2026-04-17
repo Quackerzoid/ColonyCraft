@@ -27,6 +27,7 @@ import net.minecraft.world.level.pathfinder.Node;
 import net.minecraft.world.level.pathfinder.Path;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.goal.CourierGoal;
+import village.automation.mod.entity.goal.OpenNearbyDoorsGoal;
 import village.automation.mod.menu.CourierMenu;
 
 import javax.annotation.Nullable;
@@ -114,8 +115,14 @@ public class CourierEntity extends PathfinderMob {
     }
 
     @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
+        return VillageNavigation.createOpenDoorsNavigation(this, level);
+    }
+
+    @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(0, new OpenNearbyDoorsGoal(this, true));
         this.goalSelector.addGoal(1, new CourierGoal(this));
         this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));

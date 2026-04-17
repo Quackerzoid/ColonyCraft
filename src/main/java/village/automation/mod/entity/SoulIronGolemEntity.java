@@ -33,6 +33,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
+import village.automation.mod.entity.goal.OpenNearbyDoorsGoal;
 import village.automation.mod.menu.SoulIronGolemMenu;
 
 import javax.annotation.Nullable;
@@ -90,8 +91,14 @@ public class SoulIronGolemEntity extends IronGolem {
     // ── Goal registration ─────────────────────────────────────────────────────
 
     @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
+        return VillageNavigation.createOpenDoorsNavigation(this, level);
+    }
+
+    @Override
     protected void registerGoals() {
         // Do NOT call super — we intentionally omit the vanilla player-anger targeting goal.
+        this.goalSelector.addGoal(0, new OpenNearbyDoorsGoal(this, true));
         this.goalSelector.addGoal(1, new FloatGoal(this));
         this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0, true));
         this.goalSelector.addGoal(3, new MoveTowardsTargetGoal(this, 0.9, 32.0f));

@@ -30,6 +30,7 @@ import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
 import village.automation.mod.entity.goal.AnimalKeeperWorkGoal;
+import village.automation.mod.entity.goal.OpenNearbyDoorsGoal;
 import village.automation.mod.entity.goal.FishermanWorkGoal;
 import village.automation.mod.entity.goal.LumberjackWorkGoal;
 import village.automation.mod.entity.goal.FetchFoodGoal;
@@ -192,6 +193,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
         super(type, level);
     }
 
+    @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
+        return VillageNavigation.createOpenDoorsNavigation(this, level);
+    }
+
     public static AttributeSupplier.Builder createAttributes() {
         return AbstractVillager.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
@@ -202,6 +208,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(0, new OpenNearbyDoorsGoal(this, true));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
         this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
