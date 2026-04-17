@@ -29,6 +29,7 @@ import village.automation.mod.ItemRequest;
 import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
+import village.automation.mod.entity.goal.LumberjackWorkGoal;
 import village.automation.mod.entity.goal.FetchFoodGoal;
 import village.automation.mod.entity.goal.MinerWorkGoal;
 import village.automation.mod.entity.goal.SmithCraftGoal;
@@ -149,6 +150,18 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public void setMiningActive(boolean active) { this.miningActive = active; }
     public boolean isMiningActive()             { return miningActive; }
 
+    // ── Chopping state (transient — not persisted) ────────────────────────────
+    /**
+     * Set to {@code true} by {@link village.automation.mod.entity.goal.LumberjackWorkGoal}
+     * while the lumberjack is standing at a tree base and actively animating.
+     * Read by {@link village.automation.mod.blockentity.LumbermillBlockEntity#serverTick}
+     * to decide whether the chop timer should tick down.
+     */
+    private boolean choppingActive = false;
+
+    public void setChoppingActive(boolean active) { this.choppingActive = active; }
+    public boolean isChoppingActive()             { return choppingActive; }
+
     // ── Employment (server-side authoritative) ────────────────────────────────
     /** Personal name without any job prefix (e.g. "Alice"). */
     private String baseName = "";
@@ -180,6 +193,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.goalSelector.addGoal(2, new MinerWorkGoal(this));
         this.goalSelector.addGoal(2, new SmithCraftGoal(this));
         this.goalSelector.addGoal(2, new ChefWorkGoal(this));
+        this.goalSelector.addGoal(2, new LumberjackWorkGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
