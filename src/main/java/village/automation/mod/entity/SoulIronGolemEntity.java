@@ -7,6 +7,10 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -25,9 +29,11 @@ import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
+import village.automation.mod.menu.SoulIronGolemMenu;
 
 import javax.annotation.Nullable;
 import java.util.EnumSet;
@@ -64,8 +70,8 @@ public class SoulIronGolemEntity extends IronGolem {
     private boolean repairingState  = false;
 
     private static final int   COMBAT_COOLDOWN_TICKS = 200;   // 10 s
-    private static final float ENTER_REPAIR_HP_RATIO  = 0.30f; // < 30 % max HP
-    private static final float EXIT_REPAIR_HP_RATIO   = 0.50f; // > 50 % max HP
+    private static final float ENTER_REPAIR_HP_RATIO  = 0.90f; // < 90 % max HP
+    private static final float EXIT_REPAIR_HP_RATIO   = 1.00f; // fully healed
 
     // ── Heart link ────────────────────────────────────────────────────────────
 
@@ -101,6 +107,47 @@ public class SoulIronGolemEntity extends IronGolem {
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(
                 this, Mob.class, 5, false, false,
                 entity -> entity instanceof Enemy && !(entity instanceof Creeper)));
+    }
+
+    // ── Right-click → open GUI ────────────────────────────────────────────────
+
+    /** HP restored per iron ingot (matches vanilla iron golem repair). */
+    private static final float REPAIR_PER_INGOT = 25.0f;
+
+    @Override
+    public InteractionResult mobInteract(Player player, InteractionHand hand) {
+        // Crouch + iron ingot in hand → repair the golem without opening the UI
+        if (player.isShiftKeyDown()) {
+            ItemStack held = player.getItemInHand(hand);
+            if (held.is(net.minecraft.world.item.Items.IRON_INGOT)) {
+                if (!this.level().isClientSide()) {
+                    float missing = this.getMaxHealth() - this.getHealth();
+                    if (missing > 0) {
+                        this.heal(REPAIR_PER_INGOT);
+                        this.level().playSound(null,
+                                this.getX(), this.getY(), this.getZ(),
+                                net.minecraft.sounds.SoundEvents.IRON_GOLEM_REPAIR,
+                                this.getSoundSource(), 1.0f, 1.0f);
+                        if (!player.getAbilities().instabuild) {
+                            held.shrink(1);
+                        }
+                        return InteractionResult.CONSUME;
+                    }
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide());
+            }
+        }
+
+        // Any other right-click → open the status UI
+        if (!this.level().isClientSide() && player instanceof ServerPlayer sp) {
+            sp.openMenu(
+                    new SimpleMenuProvider(
+                            (id, inv, p) -> new SoulIronGolemMenu(id, inv, this),
+                            this.getDisplayName()),
+                    buf -> buf.writeInt(this.getId()));
+            return InteractionResult.CONSUME;
+        }
+        return InteractionResult.sidedSuccess(this.level().isClientSide());
     }
 
     // ── Tick ──────────────────────────────────────────────────────────────────
@@ -142,8 +189,8 @@ public class SoulIronGolemEntity extends IronGolem {
                 repairingState = true;
             }
         } else {
-            // Exit repair: fully recovered enough
-            if (hp >= maxHp * EXIT_REPAIR_HP_RATIO) {
+            // Exit repair: fully recovered, OR a combat target appeared
+            if (hp >= maxHp * EXIT_REPAIR_HP_RATIO || inCombat) {
                 repairingState = false;
             }
         }
@@ -242,8 +289,6 @@ public class SoulIronGolemEntity extends IronGolem {
      */
     private class RepairGoal extends Goal {
 
-        private int healTimer = 0;
-
         RepairGoal() {
             // Claim MOVE so wandering/stroll goals don't fight us; LOOK so the
             // golem's gaze is controlled by the slump animation rather than logic.
@@ -264,19 +309,13 @@ public class SoulIronGolemEntity extends IronGolem {
         @Override
         public void start() {
             SoulIronGolemEntity.this.getNavigation().stop();
-            healTimer = 0;
         }
 
         @Override
         public void tick() {
-            // Keep perfectly still
+            // Keep perfectly still — healing only comes from iron deliveries
+            // by soul copper golems, or from a player crouching with an iron ingot.
             SoulIronGolemEntity.this.getNavigation().stop();
-
-            // Slowly regenerate HP
-            if (++healTimer >= 40) {
-                healTimer = 0;
-                SoulIronGolemEntity.this.heal(2.0f);   // 2 HP per 2 s
-            }
         }
     }
 }

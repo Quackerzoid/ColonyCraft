@@ -340,6 +340,10 @@ public class VillageMod {
                             .clientTrackingRange(10)
                             .build(MODID + ":soul_iron_golem"));
 
+    public static final DeferredHolder<MenuType<?>, MenuType<village.automation.mod.menu.SoulIronGolemMenu>> SOUL_IRON_GOLEM_MENU =
+            MENU_TYPES.register("soul_iron_golem_menu",
+                    () -> IMenuTypeExtension.create(village.automation.mod.menu.SoulIronGolemMenu::new));
+
     // Brown base (#563C33) with blue highlight (#60A3D9)
     public static final DeferredItem<SpawnEggItem> VILLAGER_WORKER_SPAWN_EGG =
             ITEMS.register("villager_worker_spawn_egg",

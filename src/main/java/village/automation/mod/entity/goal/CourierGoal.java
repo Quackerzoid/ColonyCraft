@@ -73,7 +73,8 @@ public class CourierGoal extends Goal {
         GATHER_FROM_BLOCK, DEPOSIT_GATHERED,
         DELIVER_TO_COOKING, PICKUP_FROM_COOKING,
         DELIVER_TO_SMELTER, PICKUP_FROM_SMELTER,
-        DELIVER_TO_ANIMAL_PEN
+        DELIVER_TO_ANIMAL_PEN,
+        DELIVER_TO_GOLEM
     }
 
     private final CourierEntity courier;
@@ -104,6 +105,8 @@ public class CourierGoal extends Goal {
     private           boolean  smelterDeliverFuel = false;
     /** Animal pen the courier is delivering breeding food to. */
     @Nullable private BlockPos targetAnimalPenPos = null;
+    /** UUID of a SoulIronGolemEntity the courier is delivering iron to. */
+    @Nullable private java.util.UUID targetGolemUUID = null;
 
     public CourierGoal(CourierEntity courier) {
         this.courier = courier;
@@ -157,6 +160,7 @@ public class CourierGoal extends Goal {
             case DELIVER_TO_SMELTER  -> tickDeliverToSmelter(level);
             case PICKUP_FROM_SMELTER -> tickPickupFromSmelter(level);
             case DELIVER_TO_ANIMAL_PEN -> tickDeliverToAnimalPen(level);
+            case DELIVER_TO_GOLEM      -> tickDeliverToGolem(level);
         }
     }
 
@@ -172,6 +176,7 @@ public class CourierGoal extends Goal {
         if (tryStartSmithWork(level)) return;
         if (tryStartChefIngredients(level)) return;
         if (tryStartSmelterDelivery(level)) return;
+        if (tryStartGolemRepair(level)) return;
 
         // ── IDLE TASKS (only when not already carrying something) ─────────────
         if (courier.isCarryingAnything()) {
@@ -343,6 +348,23 @@ public class CourierGoal extends Goal {
                 navigateTo(targetAnimalPenPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.DELIVER_TO_ANIMAL_PEN;
+                return;
+            }
+
+            // Golem repair delivery path: carry iron to the damaged golem
+            if (targetGolemUUID != null) {
+                village.automation.mod.entity.SoulIronGolemEntity golem =
+                        (village.automation.mod.entity.SoulIronGolemEntity)
+                        level.getEntity(targetGolemUUID);
+                if (golem != null && golem.isAlive() && golem.isRepairing()) {
+                    courier.setCurrentTask("Delivering iron to golem");
+                    navigateTo(golem.blockPosition());
+                    navTimeout = NAV_TIMEOUT;
+                    phase = Phase.DELIVER_TO_GOLEM;
+                } else {
+                    targetGolemUUID = null;
+                    resetToIdle();
+                }
                 return;
             }
 
@@ -1022,6 +1044,99 @@ public class CourierGoal extends Goal {
         return false;
     }
 
+    // ── Golem repair delivery ─────────────────────────────────────────────────
+
+    /**
+     * Looks for a linked {@link village.automation.mod.entity.SoulIronGolemEntity}
+     * that is currently in repair mode and below full HP, then finds an iron ingot
+     * in a registered chest so the courier can deliver it.
+     *
+     * @return {@code true} if a task was started
+     */
+    private boolean tryStartGolemRepair(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+        BlockPos heartPos = courier.getLinkedHeartPos();
+        if (heartPos == null) return false;
+
+        // Find the nearest repairing golem linked to the same heart
+        village.automation.mod.entity.SoulIronGolemEntity target = null;
+        double bestDist = Double.MAX_VALUE;
+        for (village.automation.mod.entity.SoulIronGolemEntity golem :
+                level.getEntitiesOfClass(
+                        village.automation.mod.entity.SoulIronGolemEntity.class,
+                        new net.minecraft.world.phys.AABB(heartPos).inflate(heart.getRadius() + 32))) {
+            if (!golem.isAlive()) continue;
+            if (!golem.isRepairing()) continue;
+            if (!heartPos.equals(golem.getLinkedHeartPos())) continue;
+            if (golem.getHealth() >= golem.getMaxHealth()) continue;
+            double d = courier.distanceToSqr(golem);
+            if (d < bestDist) { bestDist = d; target = golem; }
+        }
+        if (target == null) return false;
+
+        // Find an iron ingot in any unclaimed chest
+        CourierDispatcher dispatcher = getDispatcher(level);
+        SmithRecipe.Ingredient ironIngot = SmithRecipe.exact(Items.IRON_INGOT, 1);
+        BlockPos chestPos = findChestWithItem(level, ironIngot, dispatcher);
+        if (chestPos == null) return false;
+
+        if (dispatcher != null) dispatcher.claimChest(chestPos, courier.getUUID());
+        targetChestPos   = chestPos;
+        targetIngredient = ironIngot;
+        targetAmount     = 1;
+        targetGolemUUID  = target.getUUID();
+
+        courier.setCurrentTask("Delivering iron to golem");
+        navigateTo(chestPos);
+        navTimeout = NAV_TIMEOUT;
+        phase      = Phase.FETCH;
+        return true;
+    }
+
+    /**
+     * Navigates to the damaged golem and transfers carried iron ingots.
+     * Each ingot heals 25 HP (matching vanilla iron golem repair).
+     */
+    private void tickDeliverToGolem(ServerLevel level) {
+        if (targetGolemUUID == null) { resetToIdle(); return; }
+
+        Entity e = level.getEntity(targetGolemUUID);
+        if (!(e instanceof village.automation.mod.entity.SoulIronGolemEntity golem)
+                || !golem.isAlive()) {
+            targetGolemUUID = null;
+            resetToIdle();
+            return;
+        }
+
+        // Abort if the golem finished repairing before we arrived
+        if (!golem.isRepairing() || golem.getHealth() >= golem.getMaxHealth()) {
+            targetGolemUUID = null;
+            resetToIdle();
+            return;
+        }
+
+        if (distSqTo(golem.blockPosition()) > REACH_SQ) {
+            if (courier.getNavigation().isDone()) {
+                courier.getNavigation().moveTo(golem, WALK_SPEED);
+            }
+            return;
+        }
+
+        // At the golem — consume all carried iron ingots and heal
+        SimpleContainer carried = courier.getCarriedInventory();
+        for (int i = 0; i < carried.getContainerSize(); i++) {
+            ItemStack stack = carried.getItem(i);
+            if (!stack.isEmpty() && stack.is(Items.IRON_INGOT)) {
+                golem.heal(stack.getCount() * 25.0f);
+                carried.setItem(i, ItemStack.EMPTY);
+            }
+        }
+        targetGolemUUID = null;
+        resetToIdle();
+    }
+
     // ── Reset ─────────────────────────────────────────────────────────────────
 
     private void resetToIdle() {
@@ -1039,6 +1154,7 @@ public class CourierGoal extends Goal {
         targetSmelterPos         = null;
         smelterDeliverFuel       = false;
         targetAnimalPenPos       = null;
+        targetGolemUUID          = null;
     }
 
     /**
