@@ -88,6 +88,11 @@ public class WorkerProfessionLayer
                 overlay(poseStack, bufferSource, packedLight, entity, TYPE_PLAINS);
                 overlay(poseStack, bufferSource, packedLight, entity, PROF_TOOLSMITH);
             }
+            case CHEF -> {
+                // Plains leatherworker — matching apron/hat for a kitchen worker
+                overlay(poseStack, bufferSource, packedLight, entity, TYPE_PLAINS);
+                overlay(poseStack, bufferSource, packedLight, entity, PROF_LEATHERWORKER);
+            }
             default -> { /* no overlay yet */ }
         }
     }

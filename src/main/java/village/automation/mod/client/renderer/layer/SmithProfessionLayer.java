@@ -20,8 +20,8 @@ public class SmithProfessionLayer
     private static final ResourceLocation TYPE_PLAINS =
             ResourceLocation.withDefaultNamespace("textures/entity/villager/type/plains.png");
 
-    private static final ResourceLocation PROF_TOOLSMITH =
-            ResourceLocation.withDefaultNamespace("textures/entity/villager/profession/toolsmith.png");
+    private static final ResourceLocation PROF_ARMORER =
+            ResourceLocation.withDefaultNamespace("textures/entity/villager/profession/armorer.png");
 
     public SmithProfessionLayer(
             RenderLayerParent<SmithVillagerEntity, VillagerModel<SmithVillagerEntity>> parent) {
@@ -33,7 +33,7 @@ public class SmithProfessionLayer
                        SmithVillagerEntity entity, float limbSwing, float limbSwingAmount,
                        float partialTick, float ageInTicks, float netHeadYaw, float headPitch) {
         overlay(poseStack, bufferSource, packedLight, entity, TYPE_PLAINS);
-        overlay(poseStack, bufferSource, packedLight, entity, PROF_TOOLSMITH);
+        overlay(poseStack, bufferSource, packedLight, entity, PROF_ARMORER);
     }
 
     private void overlay(PoseStack poseStack, MultiBufferSource bufferSource,
