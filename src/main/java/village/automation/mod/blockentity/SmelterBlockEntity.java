@@ -64,7 +64,38 @@ public class SmelterBlockEntity extends WorkplaceBlockEntityBase {
         return new SmelterBlockMenu(containerId, inventory, this);
     }
 
-    // ── Accessors (used by future Smelter work-goal) ──────────────────────────
+    // ── Courier signal flags (transient — not persisted) ─────────────────────
+    //
+    // Set by SmelterWorkGoal; read by CourierGoal so couriers know what to
+    // fetch or collect without going through the global request system.
+
+    /** True when the ore slot is empty and the smelter is ready to receive ore. */
+    private boolean needsOre    = false;
+    /** True when the fuel slot is empty and the smelter is ready to receive fuel. */
+    private boolean needsFuel   = false;
+    /** True when smelted output is sitting in the output slot awaiting courier pickup. */
+    private boolean outputReady = false;
+
+    public boolean isNeedsOre()     { return needsOre;    }
+    public boolean isNeedsFuel()    { return needsFuel;   }
+    public boolean isOutputReady()  { return outputReady; }
+    public void setNeedsOre(boolean v)    { needsOre    = v; }
+    public void setNeedsFuel(boolean v)   { needsFuel   = v; }
+    public void setOutputReady(boolean v) { outputReady = v; }
+
+    /**
+     * How many more smelt operations can be completed using fuel energy that has
+     * already been loaded from the fuel container.
+     *
+     * <p>Stored in NBT so banked fuel energy survives server restarts.
+     * Example: 1 coal → {@code burnDuration(coal) / 200 = 8} charges.
+     */
+    private int fuelRemaining = 0;
+
+    public int  getFuelRemaining()    { return fuelRemaining; }
+    public void setFuelRemaining(int v) { fuelRemaining = Math.max(0, v); }
+
+    // ── Accessors ─────────────────────────────────────────────────────────────
 
     public SimpleContainer getOreContainer()    { return oreContainer;    }
     public SimpleContainer getFuelContainer()   { return fuelContainer;   }
@@ -78,6 +109,7 @@ public class SmelterBlockEntity extends WorkplaceBlockEntityBase {
         tag.put("OreSlot",    saveSlot(oreContainer,    0, registries));
         tag.put("FuelSlot",   saveSlot(fuelContainer,   0, registries));
         tag.put("OutputSlot", saveSlot(outputContainer, 0, registries));
+        tag.putInt("FuelRemaining", fuelRemaining);
     }
 
     @Override
@@ -86,6 +118,7 @@ public class SmelterBlockEntity extends WorkplaceBlockEntityBase {
         loadSlot(oreContainer,    0, tag, "OreSlot",    registries);
         loadSlot(fuelContainer,   0, tag, "FuelSlot",   registries);
         loadSlot(outputContainer, 0, tag, "OutputSlot", registries);
+        fuelRemaining = tag.getInt("FuelRemaining");
     }
 
     // ── NBT helpers ───────────────────────────────────────────────────────────

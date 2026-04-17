@@ -10,9 +10,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import village.automation.mod.ItemRequest;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.item.crafting.SingleRecipeInput;
+import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
+import village.automation.mod.blockentity.SmelterBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.CourierDispatcher;
 import village.automation.mod.entity.CourierEntity;
@@ -63,7 +67,8 @@ public class CourierGoal extends Goal {
     private enum Phase {
         IDLE, FETCH, DEPOSIT_TO_SMITH, PICKUP_FROM_SMITH, DELIVER_TO_WORKER,
         GATHER_FROM_BLOCK, DEPOSIT_GATHERED,
-        DELIVER_TO_COOKING, PICKUP_FROM_COOKING
+        DELIVER_TO_COOKING, PICKUP_FROM_COOKING,
+        DELIVER_TO_SMELTER, PICKUP_FROM_SMELTER
     }
 
     private final CourierEntity courier;
@@ -88,6 +93,10 @@ public class CourierGoal extends Goal {
     @Nullable private BlockPos targetWorkplacePos = null;
     /** Cooking block the courier is currently interacting with. */
     @Nullable private BlockPos targetCookingPos   = null;
+    /** Smelter block the courier is currently delivering to or collecting from. */
+    @Nullable private BlockPos targetSmelterPos   = null;
+    /** True when the smelter delivery is fuel; false when it is ore. */
+    private           boolean  smelterDeliverFuel = false;
 
     public CourierGoal(CourierEntity courier) {
         this.courier = courier;
@@ -138,6 +147,8 @@ public class CourierGoal extends Goal {
             case DEPOSIT_GATHERED    -> tickDepositGathered(level);
             case DELIVER_TO_COOKING  -> tickDeliverToCooking(level);
             case PICKUP_FROM_COOKING -> tickPickupFromCooking(level);
+            case DELIVER_TO_SMELTER  -> tickDeliverToSmelter(level);
+            case PICKUP_FROM_SMELTER -> tickPickupFromSmelter(level);
         }
     }
 
@@ -152,10 +163,12 @@ public class CourierGoal extends Goal {
         if (tryStartDirectDelivery(level)) return;
         if (tryStartSmithWork(level)) return;
         if (tryStartChefIngredients(level)) return;
+        if (tryStartSmelterDelivery(level)) return;
 
         // ── IDLE TASKS (only when not already carrying something) ─────────────
         if (courier.isCarryingAnything()) return;
         if (tryStartPickupFromCooking(level)) return;
+        if (tryStartPickupFromSmelter(level)) return;
         tryStartGathering(level);
     }
 
@@ -290,6 +303,15 @@ public class CourierGoal extends Goal {
                 navigateTo(targetCookingPos);
                 navTimeout = NAV_TIMEOUT;
                 phase = Phase.DELIVER_TO_COOKING;
+                return;
+            }
+
+            // Smelter delivery path: deposit ore or fuel into the smelter block
+            if (targetSmelterPos != null) {
+                courier.setCurrentTask("Delivering to smelter");
+                navigateTo(targetSmelterPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.DELIVER_TO_SMELTER;
                 return;
             }
 
@@ -655,6 +677,223 @@ public class CourierGoal extends Goal {
         return false;
     }
 
+    // ── DELIVER TO SMELTER ────────────────────────────────────────────────────
+
+    private void tickDeliverToSmelter(ServerLevel level) {
+        if (targetSmelterPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetSmelterPos);
+        }
+
+        if (distSqTo(targetSmelterPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetSmelterPos);
+            if (be instanceof SmelterBlockEntity smelterBE) {
+                if (smelterDeliverFuel) {
+                    transferAll(courier.getCarriedInventory(), smelterBE.getFuelContainer());
+                    smelterBE.setNeedsFuel(false);
+                } else {
+                    transferAll(courier.getCarriedInventory(), smelterBE.getOreContainer());
+                    smelterBE.setNeedsOre(false);
+                }
+            }
+            courier.clearCarried();
+
+            CourierDispatcher dispatcher = getDispatcher(level);
+            if (dispatcher != null) dispatcher.releaseSmelter(targetSmelterPos);
+            targetSmelterPos = null;
+            resetToIdle();
+        }
+    }
+
+    // ── PICKUP FROM SMELTER ───────────────────────────────────────────────────
+
+    private void tickPickupFromSmelter(ServerLevel level) {
+        if (targetSmelterPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetSmelterPos);
+        }
+
+        if (distSqTo(targetSmelterPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetSmelterPos);
+            if (be instanceof SmelterBlockEntity smelterBE) {
+                transferAllFromContainer(smelterBE.getOutputContainer(), courier.getCarriedInventory());
+                smelterBE.setOutputReady(false);
+            }
+
+            CourierDispatcher dispatcher = getDispatcher(level);
+            if (dispatcher != null) dispatcher.releaseSmelter(targetSmelterPos);
+            targetSmelterPos = null;
+
+            if (!courier.isCarryingAnything()) { resetToIdle(); return; }
+
+            BlockPos chestPos = findAnyChest(level);
+            if (chestPos == null) { courier.clearCarried(); resetToIdle(); return; }
+
+            targetChestPos = chestPos;
+            courier.setCurrentTask("Depositing smelter output");
+            navigateTo(chestPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.DEPOSIT_GATHERED;
+        }
+    }
+
+    // ── Smelter task starters ─────────────────────────────────────────────────
+
+    /**
+     * Scans linked workplaces for a {@link SmelterBlockEntity} that needs ore or
+     * fuel, finds an unclaimed chest containing a matching item, and starts a
+     * FETCH → DELIVER_TO_SMELTER chain.  Ore is prioritised over fuel.
+     *
+     * @return {@code true} if a task was started
+     */
+    private boolean tryStartSmelterDelivery(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        CourierDispatcher dispatcher = getDispatcher(level);
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof SmelterBlockEntity smelterBE)) continue;
+            if (dispatcher != null && !dispatcher.isSmelterFree(workPos, courier.getUUID())) continue;
+
+            // ── Ore delivery — up to 8 items per trip ────────────────────────
+            if (smelterBE.isNeedsOre() && isContainerEmpty(smelterBE.getOreContainer())) {
+                ItemStack foundOre = findAnyBlastableInChests(level, dispatcher);
+                if (foundOre != null) {
+                    BlockPos chestPos = findChestWithExactItem(level, foundOre, dispatcher);
+                    if (chestPos != null) {
+                        if (dispatcher != null) {
+                            dispatcher.claimSmelter(workPos, courier.getUUID());
+                            dispatcher.claimChest(chestPos, courier.getUUID());
+                        }
+                        targetSmelterPos   = workPos;
+                        smelterDeliverFuel = false;
+                        targetChestPos     = chestPos;
+                        targetIngredient   = SmithRecipe.exact(foundOre.getItem(), 8);
+                        targetAmount       = 8;
+                        courier.setCurrentTask("Fetching ore for smelter");
+                        navigateTo(chestPos);
+                        navTimeout = NAV_TIMEOUT;
+                        phase      = Phase.FETCH;
+                        return true;
+                    }
+                }
+            }
+
+            // ── Fuel delivery ─────────────────────────────────────────────────
+            if (smelterBE.isNeedsFuel() && isContainerEmpty(smelterBE.getFuelContainer())) {
+                ItemStack foundFuel = findAnyFuelInChests(level, dispatcher);
+                if (foundFuel != null) {
+                    BlockPos chestPos = findChestWithExactItem(level, foundFuel, dispatcher);
+                    if (chestPos != null) {
+                        if (dispatcher != null) {
+                            dispatcher.claimSmelter(workPos, courier.getUUID());
+                            dispatcher.claimChest(chestPos, courier.getUUID());
+                        }
+                        targetSmelterPos   = workPos;
+                        smelterDeliverFuel = true;
+                        targetChestPos     = chestPos;
+                        targetIngredient   = SmithRecipe.exact(foundFuel.getItem(), 1);
+                        targetAmount       = 1;
+                        courier.setCurrentTask("Fetching fuel for smelter");
+                        navigateTo(chestPos);
+                        navTimeout = NAV_TIMEOUT;
+                        phase      = Phase.FETCH;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Scans linked workplaces for a {@link SmelterBlockEntity} whose output slot
+     * is ready for collection, claims it, and starts a PICKUP_FROM_SMELTER leg.
+     *
+     * @return {@code true} if a task was started
+     */
+    private boolean tryStartPickupFromSmelter(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        CourierDispatcher dispatcher = getDispatcher(level);
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof SmelterBlockEntity smelterBE)) continue;
+            if (!smelterBE.isOutputReady()) continue;
+            if (isContainerEmpty(smelterBE.getOutputContainer())) continue;
+            if (dispatcher != null && !dispatcher.isSmelterFree(workPos, courier.getUUID())) continue;
+
+            if (dispatcher != null) dispatcher.claimSmelter(workPos, courier.getUUID());
+            targetSmelterPos = workPos;
+            courier.setCurrentTask("Collecting from smelter");
+            navigateTo(workPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.PICKUP_FROM_SMELTER;
+            return true;
+        }
+        return false;
+    }
+
+    // ── Smelter chest search helpers ──────────────────────────────────────────
+
+    /**
+     * Returns a copy of the first item found in any unclaimed chest that has a
+     * {@link RecipeType#BLASTING} recipe, or {@code null} if none found.
+     */
+    @Nullable
+    private ItemStack findAnyBlastableInChests(ServerLevel level,
+                                               @Nullable CourierDispatcher dispatcher) {
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return null;
+        java.util.UUID myId = courier.getUUID();
+
+        for (BlockPos chestPos : heart.getRegisteredChests()) {
+            if (dispatcher != null && !dispatcher.isChestFree(chestPos, myId)) continue;
+            BlockEntity be = level.getBlockEntity(chestPos);
+            if (!(be instanceof Container container)) continue;
+            for (int i = 0; i < container.getContainerSize(); i++) {
+                ItemStack slot = container.getItem(i);
+                if (!slot.isEmpty() && level.getRecipeManager()
+                        .getRecipeFor(RecipeType.BLASTING, new SingleRecipeInput(slot), level)
+                        .isPresent()) {
+                    return slot.copy();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns a copy of the first valid furnace-fuel item found in any unclaimed
+     * chest, or {@code null} if none found.
+     */
+    @Nullable
+    private ItemStack findAnyFuelInChests(ServerLevel level,
+                                          @Nullable CourierDispatcher dispatcher) {
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return null;
+        java.util.UUID myId = courier.getUUID();
+
+        for (BlockPos chestPos : heart.getRegisteredChests()) {
+            if (dispatcher != null && !dispatcher.isChestFree(chestPos, myId)) continue;
+            BlockEntity be = level.getBlockEntity(chestPos);
+            if (!(be instanceof Container container)) continue;
+            for (int i = 0; i < container.getContainerSize(); i++) {
+                ItemStack slot = container.getItem(i);
+                if (!slot.isEmpty() && AbstractFurnaceBlockEntity.isFuel(slot)) {
+                    return slot.copy();
+                }
+            }
+        }
+        return null;
+    }
+
     // ── Reset ─────────────────────────────────────────────────────────────────
 
     private void resetToIdle() {
@@ -669,6 +908,8 @@ public class CourierGoal extends Goal {
         directDeliveryWorkerUUID = null;
         targetWorkplacePos       = null;
         targetCookingPos         = null;
+        targetSmelterPos         = null;
+        smelterDeliverFuel       = false;
     }
 
     /**

@@ -55,6 +55,8 @@ public class CourierDispatcher {
     private final Map<BlockPos, Lock> workplaceLocks = new HashMap<>();
     /** cookingPos → courier currently handling that cooking block. */
     private final Map<BlockPos, Lock> cookingLocks   = new HashMap<>();
+    /** smelterPos → courier currently delivering to or picking up from that smelter. */
+    private final Map<BlockPos, Lock> smelterLocks   = new HashMap<>();
     /** workerUUID → courier handling the pending item request for that worker. */
     private final Map<UUID, Lock>     requestLocks   = new HashMap<>();
     /** The single courier permitted to interact with the village smith, or null if free. */
@@ -73,6 +75,7 @@ public class CourierDispatcher {
         chestLocks.entrySet().removeIf(e -> e.getValue().expired(tick));
         workplaceLocks.entrySet().removeIf(e -> e.getValue().expired(tick));
         cookingLocks.entrySet().removeIf(e -> e.getValue().expired(tick));
+        smelterLocks.entrySet().removeIf(e -> e.getValue().expired(tick));
         requestLocks.entrySet().removeIf(e -> e.getValue().expired(tick));
         if (smithLock != null && smithLock.expired(tick)) smithLock = null;
     }
@@ -86,6 +89,7 @@ public class CourierDispatcher {
         chestLocks.entrySet().removeIf(e -> e.getValue().heldBy(courierUUID));
         workplaceLocks.entrySet().removeIf(e -> e.getValue().heldBy(courierUUID));
         cookingLocks.entrySet().removeIf(e -> e.getValue().heldBy(courierUUID));
+        smelterLocks.entrySet().removeIf(e -> e.getValue().heldBy(courierUUID));
         requestLocks.entrySet().removeIf(e -> e.getValue().heldBy(courierUUID));
         if (smithLock != null && smithLock.heldBy(courierUUID)) smithLock = null;
     }
@@ -133,6 +137,12 @@ public class CourierDispatcher {
         return l == null || l.heldBy(myId);
     }
 
+    /** {@code true} when no other courier is currently delivering to or collecting from this smelter. */
+    public boolean isSmelterFree(BlockPos pos, UUID myId) {
+        Lock l = smelterLocks.get(pos);
+        return l == null || l.heldBy(myId);
+    }
+
     /** {@code true} when no other courier is currently handling the village smith. */
     public boolean isSmithFree(UUID myId) {
         return smithLock == null || smithLock.heldBy(myId);
@@ -162,6 +172,19 @@ public class CourierDispatcher {
     /** Reserves the cooking block at {@code pos} for {@code courierUUID}. */
     public void claimCooking(BlockPos pos, UUID courierUUID) {
         cookingLocks.put(pos, new Lock(courierUUID, tick + LOCK_LIFETIME));
+    }
+
+    /** Reserves the smelter block at {@code pos} for {@code courierUUID}. */
+    public void claimSmelter(BlockPos pos, UUID courierUUID) {
+        smelterLocks.put(pos, new Lock(courierUUID, tick + LOCK_LIFETIME));
+    }
+
+    /**
+     * Releases the smelter lock on a single block position.
+     * Call once the courier has finished depositing to or collecting from that smelter.
+     */
+    public void releaseSmelter(BlockPos pos) {
+        smelterLocks.remove(pos);
     }
 
     /** Reserves the village smith for {@code courierUUID}. */
