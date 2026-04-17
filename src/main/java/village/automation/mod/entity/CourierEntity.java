@@ -1,6 +1,7 @@
 package village.automation.mod.entity;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -66,6 +67,58 @@ public class CourierEntity extends PathfinderMob {
         this.goalSelector.addGoal(1, new CourierGoal(this));
         this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));
+    }
+
+    // ── Tick ─────────────────────────────────────────────────────────────────
+
+    @Override
+    public void tick() {
+        super.tick();
+        // Particles are purely visual — only spawn on the client side.
+        if (this.level().isClientSide()) {
+            tickSoulFireParticles();
+        }
+    }
+
+    /**
+     * Emits soul-fire particles around the courier's body every tick.
+     *
+     * <ul>
+     *   <li>{@link ParticleTypes#SOUL_FIRE_FLAME} — 1 particle at rest,
+     *       2 while moving — drift upward from the lower body.</li>
+     *   <li>{@link ParticleTypes#SOUL} — 1 larger soul particle every
+     *       20 ticks (once per second) near the feet.</li>
+     * </ul>
+     */
+    private void tickSoulFireParticles() {
+        var rng    = this.getRandom();
+        double hw  = this.getBbWidth() * 0.5;   // half-width  = 0.3 for the courier
+        double h   = this.getBbHeight();         // full height = 1.4
+
+        // One flame every 3 ticks at rest; every 2 ticks while moving.
+        boolean moving  = !this.getNavigation().isDone();
+        int     period  = moving ? 2 : 3;
+
+        if (this.tickCount % period == 0) {
+            this.level().addParticle(
+                    ParticleTypes.SOUL_FIRE_FLAME,
+                    this.getX() + (rng.nextDouble() - 0.5) * hw * 2,
+                    this.getY() + rng.nextDouble() * h * 0.45,   // lower 45 % of body
+                    this.getZ() + (rng.nextDouble() - 0.5) * hw * 2,
+                    (rng.nextDouble() - 0.5) * 0.02,             // slight horizontal drift
+                    rng.nextDouble() * 0.04 + 0.02,              // gentle upward float
+                    (rng.nextDouble() - 0.5) * 0.02);
+        }
+
+        // One large soul particle every 2 seconds — rises from the feet.
+        if (this.tickCount % 40 == 0) {
+            this.level().addParticle(
+                    ParticleTypes.SOUL,
+                    this.getX() + (rng.nextDouble() - 0.5) * hw * 2,
+                    this.getY() + rng.nextDouble() * 0.2,
+                    this.getZ() + (rng.nextDouble() - 0.5) * hw * 2,
+                    0.0, 0.08, 0.0);
+        }
     }
 
     // ── Heart link ────────────────────────────────────────────────────────────
