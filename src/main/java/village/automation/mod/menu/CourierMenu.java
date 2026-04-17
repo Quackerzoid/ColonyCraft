@@ -53,7 +53,7 @@ public class CourierMenu extends AbstractContainerMenu {
     private void setupSlots(SimpleContainer inv) {
         for (int i = 0; i < 9; i++) {
             final int index = i;
-            this.addSlot(new Slot(inv, index, 7 + index * 18, 61) {
+            this.addSlot(new Slot(inv, index, 7 + index * 18, 52) {
                 @Override public boolean mayPickup(Player player) { return false; }
                 @Override public boolean mayPlace(ItemStack stack)  { return false; }
             });
