@@ -79,7 +79,7 @@ public class LumberjackWorkGoal extends Goal {
     private static final double WALK_SPEED        = 0.6;
 
     // ── State ─────────────────────────────────────────────────────────────────
-    private enum Phase { APPROACH, CHOP, DEPOSIT, DONE }
+    private enum Phase { APPROACH, CHOP, DEPOSIT }
 
     private final VillagerWorkerEntity lumberjack;
     private Phase   phase            = Phase.APPROACH;
@@ -137,7 +137,6 @@ public class LumberjackWorkGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        if (phase == Phase.DONE)                                 return false;
         if (approachFailed)                                      return false;
         if (!lumberjack.level().isDay())                         return false;
         if (lumberjack.isTooHungryToWork())                      return false;
@@ -163,17 +162,34 @@ public class LumberjackWorkGoal extends Goal {
     public void stop() {
         lumberjack.setChoppingActive(false);
         lumberjack.getNavigation().stop();
-        scanCooldown  = SCAN_INTERVAL;
+        // Apply a short scan cooldown only when actually stopping (no trees found /
+        // navigation failed).  When looping tree→deposit→tree the goal never stops.
+        scanCooldown   = SCAN_INTERVAL;
         approachFailed = false;
-        treeBasePos   = null;
-        lumbermillPos = null;
-        phase         = Phase.APPROACH;
+        treeBasePos    = null;
+        lumbermillPos  = null;
+        phase          = Phase.APPROACH;
     }
 
     // ── Phase ticks ───────────────────────────────────────────────────────────
 
     private void tickApproach(ServerLevel level) {
-        if (treeBasePos == null) { approachFailed = true; return; }
+        // No tree selected yet — find one (happens after a deposit loop-back, or on start)
+        if (treeBasePos == null) {
+            lumbermillPos = lumberjack.getWorkplacePos();
+            treeBasePos = findNearbyTree(level);
+            if (treeBasePos == null) {
+                // No trees in range right now — stop the goal so the lumberjack can do
+                // other things (eat, sleep) and canUse() will restart it when a tree appears
+                approachFailed = true;
+                return;
+            }
+            approachTimeout = APPROACH_TIMEOUT;
+            swingCooldown   = SWING_INTERVAL;
+            particleCooldown = PARTICLE_INTERVAL;
+            navigateTo(treeBasePos);
+            return;
+        }
 
         double distSq = distSqTo(treeBasePos);
         if (distSq <= REACH_SQ) {
@@ -250,7 +266,11 @@ public class LumberjackWorkGoal extends Goal {
     }
 
     private void tickDeposit(ServerLevel level) {
-        if (lumbermillPos == null) { phase = Phase.DONE; return; }
+        if (lumbermillPos == null) {
+            // No mill — reset so canContinueToUse() re-validates the workplace
+            approachFailed = true;
+            return;
+        }
 
         double distSq = distSqTo(lumbermillPos);
         if (distSq <= MILL_REACH_SQ) {
@@ -258,7 +278,9 @@ public class LumberjackWorkGoal extends Goal {
             if (be instanceof LumbermillBlockEntity mill) {
                 dumpInventoryToMill(mill);
             }
-            phase = Phase.DONE;
+            // Done with this tree — immediately hunt for the next one without stopping
+            treeBasePos = null;
+            phase       = Phase.APPROACH;
         } else if (lumberjack.getNavigation().isDone()) {
             navigateToMill();
         }

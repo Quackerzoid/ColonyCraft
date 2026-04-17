@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
+import village.automation.mod.blockentity.LumbermillBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.CourierEntity;
@@ -360,6 +361,8 @@ public class CourierGoal extends Goal {
                 transferAllFromContainer(mine.getOutputContainer(), courier.getCarriedInventory());
             } else if (be instanceof FarmBlockEntity farm) {
                 extractWheatFromContainer(farm.getOutputContainer(), courier.getCarriedInventory());
+            } else if (be instanceof LumbermillBlockEntity mill) {
+                transferAllFromContainer(mill.getOutputContainer(), courier.getCarriedInventory());
             }
             targetWorkplacePos = null;
 
@@ -655,7 +658,7 @@ public class CourierGoal extends Goal {
 
     // ── Idle gathering ────────────────────────────────────────────────────────
 
-    /** Finds a mine or farm with output items and starts navigating to gather them. */
+    /** Finds a mine, farm, or lumbermill with output items and starts navigating to gather them. */
     private boolean tryStartGathering(ServerLevel level) {
         VillageHeartBlockEntity heart = getHeart(level);
         if (heart == null) return false;
@@ -669,6 +672,12 @@ public class CourierGoal extends Goal {
                 phase = Phase.GATHER_FROM_BLOCK;
                 return true;
             } else if (be instanceof FarmBlockEntity farm && containerHasWheat(farm.getOutputContainer())) {
+                targetWorkplacePos = workPos;
+                navigateTo(workPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.GATHER_FROM_BLOCK;
+                return true;
+            } else if (be instanceof LumbermillBlockEntity mill && !isContainerEmpty(mill.getOutputContainer())) {
                 targetWorkplacePos = workPos;
                 navigateTo(workPos);
                 navTimeout = NAV_TIMEOUT;
