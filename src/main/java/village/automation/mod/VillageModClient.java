@@ -14,6 +14,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import village.automation.mod.client.renderer.CourierModel;
 import village.automation.mod.client.renderer.CourierRenderer;
 import village.automation.mod.client.renderer.SoulIronGolemRenderer;
+import village.automation.mod.screen.SoulIronGolemScreen;
 import village.automation.mod.client.renderer.VillagerWorkerRenderer;
 import village.automation.mod.screen.AnimalPenBlockScreen;
 import village.automation.mod.screen.CourierScreen;
@@ -58,6 +59,7 @@ public class VillageModClient {
         event.register(VillageMod.SMELTER_BLOCK_MENU.get(),    SmelterBlockScreen::new);
         event.register(VillageMod.ENCHANTING_BLOCK_MENU.get(), EnchantingBlockScreen::new);
         event.register(VillageMod.BREWING_BLOCK_MENU.get(),    BrewingBlockScreen::new);
+        event.register(VillageMod.SOUL_IRON_GOLEM_MENU.get(), SoulIronGolemScreen::new);
     }
 
     @SubscribeEvent
