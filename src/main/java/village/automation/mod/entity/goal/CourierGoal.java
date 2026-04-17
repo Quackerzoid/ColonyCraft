@@ -651,7 +651,7 @@ public class CourierGoal extends Goal {
         return false;
     }
 
-    /** Finds an unclaimed mine or farm with output ready and starts GATHER_FROM_BLOCK. */
+    /** Finds an unclaimed mine, farm, or lumbermill with output ready and starts GATHER_FROM_BLOCK. */
     private boolean tryStartGathering(ServerLevel level) {
         CourierDispatcher dispatcher = getDispatcher(level);
         VillageHeartBlockEntity heart = getHeart(level);
@@ -666,8 +666,10 @@ public class CourierGoal extends Goal {
                     && !isContainerEmpty(mine.getOutputContainer());
             boolean hasFarmWheat  = be instanceof FarmBlockEntity farm
                     && containerHasWheat(farm.getOutputContainer());
+            boolean hasMillOutput = be instanceof LumbermillBlockEntity mill
+                    && !isContainerEmpty(mill.getOutputContainer());
 
-            if (hasMineOutput || hasFarmWheat) {
+            if (hasMineOutput || hasFarmWheat || hasMillOutput) {
                 if (dispatcher != null) dispatcher.claimWorkplace(workPos, courier.getUUID());
                 targetWorkplacePos = workPos;
                 courier.setCurrentTask("Gathering resources");
@@ -1054,63 +1056,6 @@ public class CourierGoal extends Goal {
                 .collect(java.util.stream.Collectors.toList());
     }
 
-    // ── Idle gathering ────────────────────────────────────────────────────────
-
-    /** Finds a mine, farm, or lumbermill with output items and starts navigating to gather them. */
-    private boolean tryStartGathering(ServerLevel level) {
-        VillageHeartBlockEntity heart = getHeart(level);
-        if (heart == null) return false;
-
-        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
-            BlockEntity be = level.getBlockEntity(workPos);
-            if (be instanceof MineBlockEntity mine && !isContainerEmpty(mine.getOutputContainer())) {
-                targetWorkplacePos = workPos;
-                navigateTo(workPos);
-                navTimeout = NAV_TIMEOUT;
-                phase = Phase.GATHER_FROM_BLOCK;
-                return true;
-            } else if (be instanceof FarmBlockEntity farm && containerHasWheat(farm.getOutputContainer())) {
-                targetWorkplacePos = workPos;
-                navigateTo(workPos);
-                navTimeout = NAV_TIMEOUT;
-                phase = Phase.GATHER_FROM_BLOCK;
-                return true;
-            } else if (be instanceof LumbermillBlockEntity mill && !isContainerEmpty(mill.getOutputContainer())) {
-                targetWorkplacePos = workPos;
-                navigateTo(workPos);
-                navTimeout = NAV_TIMEOUT;
-                phase = Phase.GATHER_FROM_BLOCK;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    @Nullable
-    private BlockPos findAnyChest(ServerLevel level) {
-        VillageHeartBlockEntity heart = getHeart(level);
-        if (heart == null) return null;
-        for (BlockPos pos : heart.getRegisteredChests()) {
-            if (level.getBlockEntity(pos) instanceof Container) return pos;
-        }
-        return null;
-    }
-
-    private static boolean isContainerEmpty(SimpleContainer inv) {
-        for (int i = 0; i < inv.getContainerSize(); i++) {
-            if (!inv.getItem(i).isEmpty()) return false;
-        }
-        return true;
-    }
-
-    private static boolean containerHasWheat(SimpleContainer inv) {
-        for (int i = 0; i < inv.getContainerSize(); i++) {
-            ItemStack s = inv.getItem(i);
-            if (!s.isEmpty() && s.is(Items.WHEAT)) return true;
-        }
-        return false;
-    }
-
     /** Moves all items from a SimpleContainer source into a SimpleContainer dest. */
     private static void transferAllFromContainer(SimpleContainer from, SimpleContainer to) {
         for (int i = 0; i < from.getContainerSize(); i++) {
@@ -1121,6 +1066,7 @@ public class CourierGoal extends Goal {
         }
     }
 
+    /** Moves only wheat from a SimpleContainer source into a SimpleContainer dest. */
     private static void extractWheatFromContainer(SimpleContainer from, SimpleContainer to) {
         for (int i = 0; i < from.getContainerSize(); i++) {
             ItemStack stack = from.getItem(i);
@@ -1130,6 +1076,7 @@ public class CourierGoal extends Goal {
         }
     }
 
+    /** Deposits all carried items into a generic Container (e.g. chest). */
     private static void depositAllIntoContainer(SimpleContainer from, Container to) {
         for (int i = 0; i < from.getContainerSize(); i++) {
             ItemStack stack = from.getItem(i);
