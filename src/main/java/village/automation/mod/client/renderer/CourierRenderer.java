@@ -19,6 +19,7 @@ public class CourierRenderer extends MobRenderer<CourierEntity, CourierModel<Cou
 
     public CourierRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, new CourierModel<>(ctx.bakeLayer(VillageMod.COURIER_LAYER)), 0.4f);
+        this.addLayer(new CourierItemLayer(this));
     }
 
     @Override

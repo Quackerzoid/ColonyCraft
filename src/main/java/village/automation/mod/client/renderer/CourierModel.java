@@ -29,9 +29,10 @@ import village.automation.mod.entity.CourierEntity;
 public class CourierModel<T extends CourierEntity> extends EntityModel<T> {
 
     private final ModelPart head;
-    private final ModelPart body;
-    private final ModelPart rightArm;
-    private final ModelPart leftArm;
+    // body and arms are package-accessible so CourierItemLayer can traverse into them.
+    final ModelPart body;
+    final ModelPart rightArm;
+    final ModelPart leftArm;
     private final ModelPart rightLeg;
     private final ModelPart leftLeg;
 
@@ -113,10 +114,37 @@ public class CourierModel<T extends CourierEntity> extends EntityModel<T> {
             // Arms raised while accessing a chest
             rightArm.xRot = -(Mth.PI / 2f);
             leftArm.xRot  = -(Mth.PI / 2f);
+            rightArm.zRot = 0f;
+            leftArm.zRot  = 0f;
+        } else if (entity.isCarryingAnything()) {
+            // Cradling pose: arms swung forward and angled slightly inward
+            float bob     = Mth.cos(limbSwing * 0.6662f) * 0.04f * limbSwingAmount;
+            rightArm.xRot = -(Mth.PI * 0.38f) + bob;
+            rightArm.zRot =  Mth.PI / 10f;
+            leftArm.xRot  = -(Mth.PI * 0.38f) - bob;
+            leftArm.zRot  = -(Mth.PI / 10f);
         } else {
             rightArm.xRot = Mth.cos(limbSwing * 0.6662f + Mth.PI) * 0.7f * limbSwingAmount;
             leftArm.xRot  = Mth.cos(limbSwing * 0.6662f)           * 0.7f * limbSwingAmount;
+            rightArm.zRot = 0f;
+            leftArm.zRot  = 0f;
         }
+    }
+
+    /**
+     * Positions the PoseStack at the tip of the right hand (the bottom-centre of
+     * the right arm cube) so that {@link CourierItemLayer} can place an item there.
+     *
+     * <p>Right arm cube: {@code addBox(-3f, -1f, -2f, 3, 10, 4)}.
+     * The cube's local centre-X is {@code -1.5 px} and its lowest Y is {@code 9 px}
+     * from the arm pivot, so we translate by {@code (-1.5/16, 9/16, 0)} after
+     * entering the arm's local space.
+     */
+    public void translateToRightHandTip(PoseStack poseStack) {
+        body.translateAndRotate(poseStack);
+        rightArm.translateAndRotate(poseStack);
+        // right arm cube spans x: -3..0 (centre -1.5), y: -1..9 (tip = 9)
+        poseStack.translate(-1.5f / 16f, 9.0f / 16f, 0f);
     }
 
     @Override

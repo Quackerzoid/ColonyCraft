@@ -15,6 +15,7 @@ import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.goal.CourierGoal;
@@ -33,6 +34,9 @@ public class CourierEntity extends PathfinderMob {
     private static final EntityDataAccessor<Boolean> DATA_USING_CHEST =
             SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.BOOLEAN);
 
+    private static final EntityDataAccessor<ItemStack> DATA_DISPLAY_ITEM =
+            SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.ITEM_STACK);
+
     @Nullable
     private BlockPos linkedHeartPos = null;
 
@@ -49,10 +53,14 @@ public class CourierEntity extends PathfinderMob {
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(DATA_USING_CHEST, false);
+        builder.define(DATA_DISPLAY_ITEM, ItemStack.EMPTY);
     }
 
     public boolean isUsingChest() { return entityData.get(DATA_USING_CHEST); }
     public void setUsingChest(boolean v) { entityData.set(DATA_USING_CHEST, v); }
+
+    /** The first carried item, synced to the client for rendering. */
+    public ItemStack getDisplayItem() { return entityData.get(DATA_DISPLAY_ITEM); }
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
@@ -74,9 +82,19 @@ public class CourierEntity extends PathfinderMob {
     @Override
     public void tick() {
         super.tick();
-        // Particles are purely visual — only spawn on the client side.
         if (this.level().isClientSide()) {
+            // Particles are purely visual — only spawn on the client side.
             tickSoulFireParticles();
+        } else {
+            // Keep DATA_DISPLAY_ITEM in sync so the renderer can read it on the client.
+            ItemStack display = ItemStack.EMPTY;
+            for (int i = 0; i < carriedInventory.getContainerSize(); i++) {
+                ItemStack s = carriedInventory.getItem(i);
+                if (!s.isEmpty()) { display = s; break; }
+            }
+            if (!ItemStack.matches(entityData.get(DATA_DISPLAY_ITEM), display)) {
+                entityData.set(DATA_DISPLAY_ITEM, display.copy());
+            }
         }
     }
 
@@ -136,6 +154,10 @@ public class CourierEntity extends PathfinderMob {
     public SimpleContainer getCarriedInventory() { return carriedInventory; }
 
     public boolean isCarryingAnything() {
+        // On the client the carried inventory is not synced — use the synced display item instead.
+        if (this.level().isClientSide()) {
+            return !getDisplayItem().isEmpty();
+        }
         for (int i = 0; i < carriedInventory.getContainerSize(); i++) {
             if (!carriedInventory.getItem(i).isEmpty()) return true;
         }
