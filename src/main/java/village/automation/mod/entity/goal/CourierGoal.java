@@ -15,6 +15,7 @@ import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
+import village.automation.mod.blockentity.FishingBlockEntity;
 import village.automation.mod.blockentity.LumbermillBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
 import village.automation.mod.blockentity.SmelterBlockEntity;
@@ -444,6 +445,8 @@ public class CourierGoal extends Goal {
                 extractWheatFromContainer(farm.getOutputContainer(), courier.getCarriedInventory());
             } else if (be instanceof LumbermillBlockEntity mill) {
                 transferAllFromContainer(mill.getOutputContainer(), courier.getCarriedInventory());
+            } else if (be instanceof FishingBlockEntity fish) {
+                transferAllFromContainer(fish.getOutputContainer(), courier.getCarriedInventory());
             }
 
             // Release the workplace lock — the block's output is now in our inventory
@@ -668,8 +671,10 @@ public class CourierGoal extends Goal {
                     && containerHasWheat(farm.getOutputContainer());
             boolean hasMillOutput = be instanceof LumbermillBlockEntity mill
                     && !isContainerEmpty(mill.getOutputContainer());
+            boolean hasFishOutput = be instanceof FishingBlockEntity fish
+                    && !isContainerEmpty(fish.getOutputContainer());
 
-            if (hasMineOutput || hasFarmWheat || hasMillOutput) {
+            if (hasMineOutput || hasFarmWheat || hasMillOutput || hasFishOutput) {
                 if (dispatcher != null) dispatcher.claimWorkplace(workPos, courier.getUUID());
                 targetWorkplacePos = workPos;
                 courier.setCurrentTask("Gathering resources");
