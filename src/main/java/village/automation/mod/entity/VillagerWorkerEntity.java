@@ -192,6 +192,31 @@ public class VillagerWorkerEntity extends AbstractVillager {
         super(type, level);
     }
 
+    /**
+     * Returns a {@link net.minecraft.world.entity.ai.navigation.GroundPathNavigation}
+     * whose {@link net.minecraft.world.level.pathfinder.WalkNodeEvaluator} is created
+     * with {@code canPassDoors = true}.
+     *
+     * <p>{@code GroundPathNavigation} calls {@code createPathFinder()} inside its own
+     * constructor, so any post-construction {@code setCanOpenDoors(true)} call arrives
+     * too late to affect the already-built evaluator.  Overriding {@code createPathFinder}
+     * in an anonymous subclass is the only reliable way to inject the flag before the
+     * evaluator is used for the first time.
+     */
+    @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(Level level) {
+        return new net.minecraft.world.entity.ai.navigation.GroundPathNavigation(this, level) {
+            @Override
+            protected net.minecraft.world.level.pathfinder.PathFinder createPathFinder(int maxVisitedNodes) {
+                net.minecraft.world.level.pathfinder.WalkNodeEvaluator eval =
+                        new net.minecraft.world.level.pathfinder.WalkNodeEvaluator();
+                eval.setCanPassDoors(true);
+                this.nodeEvaluator = eval;
+                return new net.minecraft.world.level.pathfinder.PathFinder(eval, maxVisitedNodes);
+            }
+        };
+    }
+
     public static AttributeSupplier.Builder createAttributes() {
         return AbstractVillager.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
@@ -202,6 +227,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(0, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
         this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
