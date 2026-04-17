@@ -16,6 +16,7 @@ import village.automation.mod.client.renderer.CourierRenderer;
 import village.automation.mod.client.renderer.VillagerWorkerRenderer;
 import village.automation.mod.screen.AnimalPenBlockScreen;
 import village.automation.mod.screen.CourierScreen;
+import village.automation.mod.screen.SmelterBlockScreen;
 import village.automation.mod.screen.BrewingBlockScreen;
 import village.automation.mod.screen.CookingBlockScreen;
 import village.automation.mod.screen.EnchantingBlockScreen;
@@ -53,6 +54,7 @@ public class VillageModClient {
         event.register(VillageMod.ANIMAL_PEN_MENU.get(),       AnimalPenBlockScreen::new);
         event.register(VillageMod.COOKING_BLOCK_MENU.get(),    CookingBlockScreen::new);
         event.register(VillageMod.SMITHING_BLOCK_MENU.get(),   SmithingBlockScreen::new);
+        event.register(VillageMod.SMELTER_BLOCK_MENU.get(),    SmelterBlockScreen::new);
         event.register(VillageMod.ENCHANTING_BLOCK_MENU.get(), EnchantingBlockScreen::new);
         event.register(VillageMod.BREWING_BLOCK_MENU.get(),    BrewingBlockScreen::new);
     }

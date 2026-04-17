@@ -28,6 +28,7 @@ public enum JobType {
 
     // ── Crafting / specialisation ─────────────────────────────────────────────
     BLACKSMITH    ("Blacksmith ",   "Blacksmith"   ),
+    SMELTER       ("Smelter ",      "Smelter"      ),
     ENCHANTER     ("Enchanter ",    "Enchanter"    ),
     POTION_BREWER ("Brewer ",       "Potion Brewer");
 
