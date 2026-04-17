@@ -1,7 +1,12 @@
-
-add smelter bloke
-add lumbyjack
-add ai for them to take stuff without a copper golem
+add golem limit
+add raids
+add raid item thats used to enchant stuff
+add village totem
+villager levels
+enchanter
+brewer
+butcher & block
+animal keeper
 
 proper heart gui :
 @ tool levels
