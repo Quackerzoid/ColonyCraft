@@ -13,6 +13,7 @@ import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import village.automation.mod.client.renderer.CourierModel;
 import village.automation.mod.client.renderer.CourierRenderer;
+import village.automation.mod.client.renderer.SoulIronGolemRenderer;
 import village.automation.mod.client.renderer.VillagerWorkerRenderer;
 import village.automation.mod.screen.AnimalPenBlockScreen;
 import village.automation.mod.screen.CourierScreen;
@@ -63,6 +64,7 @@ public class VillageModClient {
     static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(VillageMod.VILLAGER_WORKER.get(), VillagerWorkerRenderer::new);
         event.registerEntityRenderer(VillageMod.COURIER.get(), CourierRenderer::new);
+        event.registerEntityRenderer(VillageMod.SOUL_IRON_GOLEM.get(), SoulIronGolemRenderer::new);
     }
 
     @SubscribeEvent

@@ -218,7 +218,8 @@ public class VillageMod {
     // ── Smithing Block ───────────────────────────────────────────────────────
     public static final DeferredBlock<SmithingBlock> SMITHING_BLOCK = BLOCKS.register("smithing_block",
             () -> new SmithingBlock(BlockBehaviour.Properties.of()
-                    .mapColor(MapColor.METAL).strength(2.5f).requiresCorrectToolForDrops()));
+                    .mapColor(MapColor.METAL).strength(2.5f).requiresCorrectToolForDrops()
+                    .noOcclusion()));
     public static final DeferredItem<BlockItem> SMITHING_BLOCK_ITEM =
             ITEMS.registerSimpleBlockItem("smithing_block", SMITHING_BLOCK);
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmithingBlockEntity>> SMITHING_BLOCK_BE =
@@ -329,6 +330,15 @@ public class VillageMod {
                             .sized(0.6f, 1.95f)
                             .clientTrackingRange(10)
                             .build(MODID + ":villager_worker"));
+
+    // ── Soul Iron Golem entity ───────────────────────────────────────────────
+    public static final DeferredHolder<EntityType<?>, EntityType<village.automation.mod.entity.SoulIronGolemEntity>> SOUL_IRON_GOLEM =
+            ENTITY_TYPES.register("soul_iron_golem",
+                    () -> EntityType.Builder.<village.automation.mod.entity.SoulIronGolemEntity>of(
+                                    village.automation.mod.entity.SoulIronGolemEntity::new, MobCategory.MONSTER)
+                            .sized(1.4f, 2.7f)
+                            .clientTrackingRange(10)
+                            .build(MODID + ":soul_iron_golem"));
 
     // Brown base (#563C33) with blue highlight (#60A3D9)
     public static final DeferredItem<SpawnEggItem> VILLAGER_WORKER_SPAWN_EGG =
@@ -455,6 +465,7 @@ public class VillageMod {
     private static void onEntityAttributes(EntityAttributeCreationEvent event) {
         event.put(VILLAGER_WORKER.get(), VillagerWorkerEntity.createAttributes().build());
         event.put(COURIER.get(), CourierEntity.createAttributes().build());
+        event.put(SOUL_IRON_GOLEM.get(), village.automation.mod.entity.SoulIronGolemEntity.createAttributes().build());
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
