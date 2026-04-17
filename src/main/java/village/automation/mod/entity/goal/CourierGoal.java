@@ -15,7 +15,9 @@ import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
+import village.automation.mod.blockentity.AnimalPenBlockEntity;
 import village.automation.mod.blockentity.FishingBlockEntity;
+import village.automation.mod.entity.AnimalType;
 import village.automation.mod.blockentity.LumbermillBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
 import village.automation.mod.blockentity.SmelterBlockEntity;
@@ -70,7 +72,8 @@ public class CourierGoal extends Goal {
         IDLE, FETCH, DEPOSIT_TO_SMITH, PICKUP_FROM_SMITH, DELIVER_TO_WORKER,
         GATHER_FROM_BLOCK, DEPOSIT_GATHERED,
         DELIVER_TO_COOKING, PICKUP_FROM_COOKING,
-        DELIVER_TO_SMELTER, PICKUP_FROM_SMELTER
+        DELIVER_TO_SMELTER, PICKUP_FROM_SMELTER,
+        DELIVER_TO_ANIMAL_PEN
     }
 
     private final CourierEntity courier;
@@ -99,6 +102,8 @@ public class CourierGoal extends Goal {
     @Nullable private BlockPos targetSmelterPos   = null;
     /** True when the smelter delivery is fuel; false when it is ore. */
     private           boolean  smelterDeliverFuel = false;
+    /** Animal pen the courier is delivering breeding food to. */
+    @Nullable private BlockPos targetAnimalPenPos = null;
 
     public CourierGoal(CourierEntity courier) {
         this.courier = courier;
@@ -151,6 +156,7 @@ public class CourierGoal extends Goal {
             case PICKUP_FROM_COOKING -> tickPickupFromCooking(level);
             case DELIVER_TO_SMELTER  -> tickDeliverToSmelter(level);
             case PICKUP_FROM_SMELTER -> tickPickupFromSmelter(level);
+            case DELIVER_TO_ANIMAL_PEN -> tickDeliverToAnimalPen(level);
         }
     }
 
@@ -184,6 +190,7 @@ public class CourierGoal extends Goal {
         }
         if (tryStartPickupFromCooking(level)) return;
         if (tryStartPickupFromSmelter(level)) return;
+        if (tryStartAnimalPenFood(level)) return;
         tryStartGathering(level);
     }
 
@@ -330,6 +337,15 @@ public class CourierGoal extends Goal {
                 return;
             }
 
+            // Animal pen food delivery path
+            if (targetAnimalPenPos != null) {
+                courier.setCurrentTask("Delivering to animal pen");
+                navigateTo(targetAnimalPenPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.DELIVER_TO_ANIMAL_PEN;
+                return;
+            }
+
             // Direct delivery path: go straight to the requesting worker
             if (directDelivery) {
                 Entity target = directDeliveryWorkerUUID != null
@@ -460,6 +476,8 @@ public class CourierGoal extends Goal {
                 transferAllFromContainer(mill.getOutputContainer(), courier.getCarriedInventory());
             } else if (be instanceof FishingBlockEntity fish) {
                 transferAllFromContainer(fish.getOutputContainer(), courier.getCarriedInventory());
+            } else if (be instanceof AnimalPenBlockEntity pen) {
+                transferAllFromContainer(pen.getOutputContainer(), courier.getCarriedInventory());
             }
 
             // Release the workplace lock — the block's output is now in our inventory
@@ -706,8 +724,10 @@ public class CourierGoal extends Goal {
                     && !isContainerEmpty(mill.getOutputContainer());
             boolean hasFishOutput = be instanceof FishingBlockEntity fish
                     && !isContainerEmpty(fish.getOutputContainer());
+            boolean hasPenOutput  = be instanceof AnimalPenBlockEntity pen
+                    && !isContainerEmpty(pen.getOutputContainer());
 
-            if (hasMineOutput || hasFarmWheat || hasMillOutput || hasFishOutput) {
+            if (hasMineOutput || hasFarmWheat || hasMillOutput || hasFishOutput || hasPenOutput) {
                 if (dispatcher != null) dispatcher.claimWorkplace(workPos, courier.getUUID());
                 targetWorkplacePos = workPos;
                 courier.setCurrentTask("Gathering resources");
@@ -937,6 +957,71 @@ public class CourierGoal extends Goal {
         return null;
     }
 
+    // ── DELIVER TO ANIMAL PEN ─────────────────────────────────────────────────
+
+    private void tickDeliverToAnimalPen(ServerLevel level) {
+        if (targetAnimalPenPos == null) { resetToIdle(); return; }
+
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetAnimalPenPos);
+        }
+
+        if (distSqTo(targetAnimalPenPos) < REACH_SQ) {
+            BlockEntity be = level.getBlockEntity(targetAnimalPenPos);
+            if (be instanceof AnimalPenBlockEntity pen) {
+                transferAll(courier.getCarriedInventory(), pen.getBreedingFoodInput());
+                pen.setNeedsBreedingFood(false);
+            }
+            courier.clearCarried();
+            CourierDispatcher dispatcher = getDispatcher(level);
+            if (dispatcher != null) dispatcher.releaseWorkplace(targetAnimalPenPos);
+            targetAnimalPenPos = null;
+            resetToIdle();
+        }
+    }
+
+    // ── Animal pen food task starter ──────────────────────────────────────────
+
+    /**
+     * If any animal pen has signalled it needs breeding food, fetches the
+     * appropriate food item from a chest and delivers it to the pen.
+     *
+     * @return {@code true} if a task was started
+     */
+    private boolean tryStartAnimalPenFood(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        CourierDispatcher dispatcher = getDispatcher(level);
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (!(be instanceof AnimalPenBlockEntity pen)) continue;
+            if (!pen.isNeedsBreedingFood()) continue;
+            if (dispatcher != null && !dispatcher.isWorkplaceFree(workPos, courier.getUUID())) continue;
+
+            net.minecraft.world.item.Item breedingItem = pen.getTargetAnimalType().getBreedingFood();
+            SmithRecipe.Ingredient ingredient = SmithRecipe.exact(breedingItem, 1);
+            BlockPos chestPos = findChestWithItem(level, ingredient, dispatcher);
+            if (chestPos == null) continue;
+
+            if (dispatcher != null) {
+                dispatcher.claimWorkplace(workPos, courier.getUUID());
+                dispatcher.claimChest(chestPos, courier.getUUID());
+            }
+            targetAnimalPenPos = workPos;
+            targetChestPos     = chestPos;
+            targetIngredient   = ingredient;
+            targetAmount       = 64;
+            courier.setCurrentTask("Fetching for animal pen");
+            navigateTo(chestPos);
+            navTimeout = NAV_TIMEOUT;
+            phase = Phase.FETCH;
+            return true;
+        }
+        return false;
+    }
+
     // ── Reset ─────────────────────────────────────────────────────────────────
 
     private void resetToIdle() {
@@ -953,6 +1038,7 @@ public class CourierGoal extends Goal {
         targetCookingPos         = null;
         targetSmelterPos         = null;
         smelterDeliverFuel       = false;
+        targetAnimalPenPos       = null;
     }
 
     /**

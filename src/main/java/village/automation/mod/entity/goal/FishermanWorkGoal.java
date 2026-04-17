@@ -1,8 +1,10 @@
 package village.automation.mod.entity.goal;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
+import org.joml.Vector3f;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.FluidTags;
@@ -212,6 +214,24 @@ public class FishermanWorkGoal extends Goal {
                     waterPos.getY() + 0.3,
                     waterPos.getZ() + 0.5,
                     30f, 30f);
+        }
+
+        // Fishing line arc particles — simulate the line from hand to water
+        if (waterPos != null && animTick % 3 == 0) {
+            double handX = fisherman.getX() + fisherman.getLookAngle().x * 0.4;
+            double handY = fisherman.getEyeY() - 0.4;
+            double handZ = fisherman.getZ() + fisherman.getLookAngle().z * 0.4;
+            double targetX = waterPos.getX() + 0.5;
+            double targetY = waterPos.getY() + 0.1;
+            double targetZ = waterPos.getZ() + 0.5;
+            DustParticleOptions lineParticle = new DustParticleOptions(new Vector3f(0.85f, 0.85f, 0.85f), 0.4f);
+            for (int step = 0; step <= 5; step++) {
+                double t = step / 5.0;
+                double px = handX + (targetX - handX) * t;
+                double py = handY + (targetY - handY) * t + Math.sin(t * Math.PI) * -0.5;
+                double pz = handZ + (targetZ - handZ) * t;
+                level.sendParticles(lineParticle, px, py, pz, 1, 0, 0, 0, 0);
+            }
         }
 
         animTick++;
