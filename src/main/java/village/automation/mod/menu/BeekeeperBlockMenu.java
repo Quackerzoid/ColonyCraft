@@ -107,7 +107,7 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
         for (int i = 0; i < 9; i++) {
             int row = i / 3;
             int col = i % 3;
-            this.addSlot(new Slot(container, i, 8 + col * 18, 34 + row * 18) {
+            this.addSlot(new Slot(container, i, 8 + col * 18, 28 + row * 18) {
                 @Override public boolean mayPlace(ItemStack stack) {
                     return BeekeeperBlockEntity.isWoodLog(stack);
                 }
@@ -121,7 +121,7 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
         for (int i = 0; i < 9; i++) {
             int row = i / 3;
             int col = i % 3;
-            this.addSlot(new Slot(container, i, 98 + col * 18, 34 + row * 18) {
+            this.addSlot(new Slot(container, i, 98 + col * 18, 28 + row * 18) {
                 @Override public boolean mayPlace(ItemStack stack) { return false; }
             });
         }
@@ -130,12 +130,12 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
     private void addPlayerInventory(Inventory inv) {
         for (int row = 0; row < 3; row++)
             for (int col = 0; col < 9; col++)
-                this.addSlot(new Slot(inv, col + row * 9 + 9, 8 + col * 18, 138 + row * 18));
+                this.addSlot(new Slot(inv, col + row * 9 + 9, 8 + col * 18, 116 + row * 18));
     }
 
     private void addPlayerHotbar(Inventory inv) {
         for (int col = 0; col < 9; col++)
-            this.addSlot(new Slot(inv, col, 8 + col * 18, 192));
+            this.addSlot(new Slot(inv, col, 8 + col * 18, 170));
     }
 
     // ── Validity / shift-click ────────────────────────────────────────────────
