@@ -1,3 +1,5 @@
+fix animal keeper bugs
+make villagers open doors
 add golem limit
 add raids
 add raid item thats used to enchant stuff
@@ -6,7 +8,7 @@ villager levels
 enchanter
 brewer
 butcher & block
-animal keeper
+
 
 proper heart gui :
 @ tool levels
