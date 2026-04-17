@@ -11,6 +11,9 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import village.automation.mod.block.SmelterBlock;
 import village.automation.mod.blockentity.IWorkplaceBlockEntity;
 import village.automation.mod.blockentity.SmelterBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
@@ -95,6 +98,8 @@ public class SmelterWorkGoal extends Goal {
                 // outputReady intentionally NOT cleared — courier should still collect
                 // any output that was already produced before the goal stopped.
             }
+            // Ensure the block never stays in the lit model if the goal is interrupted.
+            setLit(level, false);
         }
         smelter.getNavigation().stop();
         state          = STATE_IDLE;
@@ -151,6 +156,7 @@ public class SmelterWorkGoal extends Goal {
             sbe.setNeedsFuel(false);
             smeltTimer       = SMELT_TICKS;
             particleCooldown = PARTICLE_INTERVAL;
+            setLit(level, true);
             state            = STATE_SMELTING;
         }
     }
@@ -202,6 +208,7 @@ public class SmelterWorkGoal extends Goal {
         ItemStack currentOut = sbe.getOutputContainer().getItem(0);
         if (!currentOut.isEmpty() && currentOut.getCount() >= currentOut.getMaxStackSize()) {
             sbe.setOutputReady(true);
+            setLit(level, false);
             state = STATE_READY;
             return;
         }
@@ -212,6 +219,7 @@ public class SmelterWorkGoal extends Goal {
             if (fuelStack.isEmpty()) {
                 // Ran out of fuel mid-batch — collect what we have and pause
                 if (!currentOut.isEmpty()) sbe.setOutputReady(true);
+                setLit(level, false);
                 state = STATE_READY;
                 return;
             }
@@ -268,10 +276,11 @@ public class SmelterWorkGoal extends Goal {
             // More ore in the slot and fuel available — continue the batch
             smeltTimer       = SMELT_TICKS;
             particleCooldown = PARTICLE_INTERVAL;
-            // state remains STATE_SMELTING
+            // state remains STATE_SMELTING; LIT stays true
         } else {
             // Batch done (or no room/fuel) — signal courier to collect output
             if (!latestOut.isEmpty()) sbe.setOutputReady(true);
+            setLit(level, false);
             state = STATE_READY;
         }
     }
@@ -337,6 +346,19 @@ public class SmelterWorkGoal extends Goal {
         if (workPos == null) return null;
         BlockEntity be = level.getBlockEntity(workPos);
         return be instanceof SmelterBlockEntity sbe ? sbe : null;
+    }
+
+    /**
+     * Flips the {@link SmelterBlock#LIT} block state property on the workplace block.
+     * Safe to call even if the block at {@code workPos} has been replaced.
+     */
+    private void setLit(ServerLevel level, boolean lit) {
+        BlockPos workPos = smelter.getWorkplacePos();
+        if (workPos == null) return;
+        BlockState bs = level.getBlockState(workPos);
+        if (bs.hasProperty(BlockStateProperties.LIT)) {
+            level.setBlock(workPos, bs.setValue(BlockStateProperties.LIT, lit), 3);
+        }
     }
 
     @SuppressWarnings("unused")
