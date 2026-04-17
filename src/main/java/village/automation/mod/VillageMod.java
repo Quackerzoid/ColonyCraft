@@ -76,6 +76,7 @@ import village.automation.mod.blockentity.SmelterBlockEntity;
 import village.automation.mod.blockentity.SmithingBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.CourierEntity;
+import village.automation.mod.entity.VillageBeeEntity;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.item.VillageWandItem;
 import village.automation.mod.loot.VillagerSoulLootModifier;
@@ -327,6 +328,14 @@ public class VillageMod {
     public static final DeferredItem<BlockItem> SOUL_PUMPKIN_ITEM =
             ITEMS.registerSimpleBlockItem("soul_pumpkin", SOUL_PUMPKIN);
 
+    // ── Village Bee entity ───────────────────────────────────────────────────
+    public static final DeferredHolder<EntityType<?>, EntityType<VillageBeeEntity>> VILLAGE_BEE =
+            ENTITY_TYPES.register("village_bee",
+                    () -> EntityType.Builder.<VillageBeeEntity>of(VillageBeeEntity::new, MobCategory.CREATURE)
+                            .sized(0.7f, 0.6f)
+                            .clientTrackingRange(8)
+                            .build(MODID + ":village_bee"));
+
     // ── Courier entity ───────────────────────────────────────────────────────
     public static final DeferredHolder<EntityType<?>, EntityType<CourierEntity>> COURIER =
             ENTITY_TYPES.register("courier",
@@ -508,6 +517,7 @@ public class VillageMod {
         event.put(VILLAGER_WORKER.get(), VillagerWorkerEntity.createAttributes().build());
         event.put(COURIER.get(), CourierEntity.createAttributes().build());
         event.put(SOUL_IRON_GOLEM.get(), village.automation.mod.entity.SoulIronGolemEntity.createAttributes().build());
+        event.put(VILLAGE_BEE.get(), net.minecraft.world.entity.animal.Bee.createAttributes().build());
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

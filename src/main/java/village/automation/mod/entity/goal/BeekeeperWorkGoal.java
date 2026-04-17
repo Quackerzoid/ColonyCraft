@@ -2,12 +2,15 @@ package village.automation.mod.entity.goal;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.phys.AABB;
+import village.automation.mod.VillageMod;
 import village.automation.mod.blockentity.BeekeeperBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.JobType;
+import village.automation.mod.entity.VillageBeeEntity;
 import village.automation.mod.entity.VillagerWorkerEntity;
 
 import javax.annotation.Nullable;
@@ -104,16 +107,6 @@ public class BeekeeperWorkGoal extends Goal {
         if (++idleTick < IDLE_RECHECK) return;
         idleTick = 0;
 
-        // Prune dead bees from claimed set
-        if (keeper.level() instanceof ServerLevel sl) {
-            for (java.util.UUID uuid : new java.util.HashSet<>(be.getClaimedBees())) {
-                var entity = sl.getEntity(uuid);
-                if (entity == null || !entity.isAlive()) {
-                    be.unclaimBee(uuid);
-                }
-            }
-        }
-
         if (be.canClaimMoreBees()) {
             Bee bee = findNearbyUnclaimedBee(be);
             if (bee != null) {
@@ -151,12 +144,27 @@ public class BeekeeperWorkGoal extends Goal {
             phase = Phase.IDLE;
             return;
         }
-        be.claimBee(targetBee.getUUID());
-        // Prevent the bee from wandering too far from the village heart
-        BlockPos heartPos = be.getLinkedHeartPos() != null ? be.getLinkedHeartPos() : blockPos;
-        targetBee.restrictTo(heartPos, SEARCH_RADIUS);
+        if (!(keeper.level() instanceof ServerLevel sl)) {
+            phase = Phase.IDLE;
+            return;
+        }
 
-        targetBee  = null;
+        // Convert the wild bee into a domesticated VillageBeeEntity
+        VillageBeeEntity villageBee = new VillageBeeEntity(VillageMod.VILLAGE_BEE.get(), sl);
+        villageBee.copyPosition(targetBee);
+        villageBee.setYHeadRot(targetBee.getYHeadRot());
+        if (blockPos != null) villageBee.setHomePos(blockPos);
+        BlockPos heartPos = be.getLinkedHeartPos();
+        if (heartPos != null) villageBee.setHeartPos(heartPos);
+
+        // Remove wild bee, spawn village bee
+        targetBee.discard();
+        sl.addFreshEntity(villageBee);
+
+        // Register the new bee with this block entity
+        be.claimBee(villageBee.getUUID());
+
+        targetBee = null;
         phase = Phase.IDLE;
     }
 
@@ -189,7 +197,9 @@ public class BeekeeperWorkGoal extends Goal {
 
         AABB searchBox = new AABB(centre).inflate(SEARCH_RADIUS, 16, SEARCH_RADIUS);
         List<Bee> bees = keeper.level().getEntitiesOfClass(Bee.class, searchBox,
-                b -> b.isAlive() && !be.hasClaimed(b.getUUID()));
+                b -> b.isAlive()
+                     && !(b instanceof VillageBeeEntity)  // already converted
+                     && !be.hasClaimed(b.getUUID()));
 
         if (bees.isEmpty()) return null;
         bees.sort(Comparator.comparingDouble(b -> b.distanceToSqr(keeper)));
