@@ -200,10 +200,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
     }
 
     @Override
-    public boolean canOpenDoors() { return true; }
-
-    @Override
     protected void registerGoals() {
+        // Allow the path navigator to route through closed fence gates and doors
+        if (this.getNavigation() instanceof net.minecraft.world.entity.ai.navigation.GroundPathNavigation nav) {
+            nav.setCanOpenDoors(true);
+        }
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(0, new OpenDoorGoal(this, true));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
