@@ -1,11 +1,18 @@
 package village.automation.mod.entity;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.MoveTowardsTargetGoal;
@@ -23,11 +30,48 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 
 import javax.annotation.Nullable;
+import java.util.EnumSet;
 
 public class SoulIronGolemEntity extends IronGolem {
 
-    @Nullable
-    private BlockPos linkedHeartPos;
+    // ── Synced data ───────────────────────────────────────────────────────────
+
+    /** Human-readable status displayed above the head. Synced to clients. */
+    private static final EntityDataAccessor<String> DATA_STATUS =
+            SynchedEntityData.defineId(SoulIronGolemEntity.class, EntityDataSerializers.STRING);
+
+    /** Whether the golem is currently in repair mode. Drives the model animation. */
+    private static final EntityDataAccessor<Boolean> DATA_REPAIRING =
+            SynchedEntityData.defineId(SoulIronGolemEntity.class, EntityDataSerializers.BOOLEAN);
+
+    @Override
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(DATA_STATUS,    "Patrolling");
+        builder.define(DATA_REPAIRING, false);
+    }
+
+    public String  getStatus()              { return entityData.get(DATA_STATUS);    }
+    public void    setStatus(String status) { entityData.set(DATA_STATUS, status);   }
+    /** Client-readable; true while the repair animation should play. */
+    public boolean isRepairing()            { return entityData.get(DATA_REPAIRING); }
+
+    // ── Server-side repair state ──────────────────────────────────────────────
+
+    /** Last tick on which the golem had a live combat target. */
+    private int     lastCombatTick  = 0;
+    /** True when the server has decided the golem should be repairing. */
+    private boolean repairingState  = false;
+
+    private static final int   COMBAT_COOLDOWN_TICKS = 200;   // 10 s
+    private static final float ENTER_REPAIR_HP_RATIO  = 0.30f; // < 30 % max HP
+    private static final float EXIT_REPAIR_HP_RATIO   = 0.50f; // > 50 % max HP
+
+    // ── Heart link ────────────────────────────────────────────────────────────
+
+    @Nullable private BlockPos linkedHeartPos;
+
+    // ── Constructor / attributes ──────────────────────────────────────────────
 
     public SoulIronGolemEntity(EntityType<? extends IronGolem> type, Level level) {
         super(type, level);
@@ -37,32 +81,26 @@ public class SoulIronGolemEntity extends IronGolem {
         return IronGolem.createAttributes();
     }
 
+    // ── Goal registration ─────────────────────────────────────────────────────
+
     @Override
     protected void registerGoals() {
-        // Do not call super — we intentionally skip the vanilla player-targeting goal.
+        // Do NOT call super — we intentionally omit the vanilla player-anger targeting goal.
         this.goalSelector.addGoal(1, new FloatGoal(this));
         this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0, true));
         this.goalSelector.addGoal(3, new MoveTowardsTargetGoal(this, 0.9, 32.0f));
+        // RepairGoal (priority 4): runs when repairing and no combat target;
+        // higher-priority attack goals (2, 3) naturally interrupt it when a target appears.
+        this.goalSelector.addGoal(4, new RepairGoal());
         this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 0.6, 0.0f));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
-        // Attack enemies, but never target creepers (explosion would grief the village)
+        // Never target creepers — an explosion inside the village would be bad.
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(
                 this, Mob.class, 5, false, false,
                 entity -> entity instanceof Enemy && !(entity instanceof Creeper)));
-    }
-
-    // ── Heart link ────────────────────────────────────────────────────────────
-
-    public void linkToHeart(BlockPos pos) {
-        this.linkedHeartPos = pos;
-    }
-
-    @Nullable
-    public BlockPos getLinkedHeartPos() {
-        return linkedHeartPos;
     }
 
     // ── Tick ──────────────────────────────────────────────────────────────────
@@ -71,17 +109,102 @@ public class SoulIronGolemEntity extends IronGolem {
     public void tick() {
         super.tick();
 
-        if (!this.level().isClientSide && linkedHeartPos != null) {
+        if (this.level().isClientSide) {
+            tickSoulFireParticles();
+            return;
+        }
+
+        // ── Territory restriction ────────────────────────────────────────────
+        if (linkedHeartPos != null) {
             BlockEntity be = this.level().getBlockEntity(linkedHeartPos);
             if (be instanceof VillageHeartBlockEntity heart) {
-                // Keep the golem confined to the heart's territory
                 this.restrictTo(linkedHeartPos, heart.getRadius());
             } else {
-                // Heart was removed — detach so the golem can roam freely
                 linkedHeartPos = null;
             }
         }
+
+        // ── Repair state machine ──────────────────────────────────────────────
+        LivingEntity target = this.getTarget();
+        boolean inCombat = target != null && target.isAlive();
+
+        if (inCombat) {
+            lastCombatTick = this.tickCount;
+        }
+
+        float hp    = this.getHealth();
+        float maxHp = (float) this.getAttributeValue(Attributes.MAX_HEALTH);
+
+        if (!repairingState) {
+            // Enter repair: low HP and no combat for 10 s
+            if (hp < maxHp * ENTER_REPAIR_HP_RATIO
+                    && (this.tickCount - lastCombatTick) > COMBAT_COOLDOWN_TICKS) {
+                repairingState = true;
+            }
+        } else {
+            // Exit repair: fully recovered enough
+            if (hp >= maxHp * EXIT_REPAIR_HP_RATIO) {
+                repairingState = false;
+            }
+        }
+
+        // Push synced flag to clients only when it actually changes
+        if (repairingState != entityData.get(DATA_REPAIRING)) {
+            entityData.set(DATA_REPAIRING, repairingState);
+        }
+
+        // ── Status label ─────────────────────────────────────────────────────
+        String newStatus;
+        if (inCombat) {
+            newStatus = "Attacking: " + target.getType().getDescription().getString();
+        } else if (repairingState) {
+            newStatus = "Repairing";
+        } else {
+            newStatus = "Patrolling";
+        }
+        if (!newStatus.equals(getStatus())) setStatus(newStatus);
     }
+
+    // ── Particles (client only) ───────────────────────────────────────────────
+
+    /**
+     * Soul-fire particles scaled to the iron golem's 1.4 × 2.7 bounding box.
+     * Mirrors the courier's implementation exactly.
+     */
+    private void tickSoulFireParticles() {
+        var    rng    = this.getRandom();
+        double hw     = this.getBbWidth() * 0.5;   // 0.7
+        double h      = this.getBbHeight();         // 2.7
+        boolean moving = !this.getNavigation().isDone();
+        int     period = moving ? 2 : 3;
+
+        if (this.tickCount % period == 0) {
+            this.level().addParticle(
+                    ParticleTypes.SOUL_FIRE_FLAME,
+                    this.getX() + (rng.nextDouble() - 0.5) * hw * 2,
+                    this.getY() + rng.nextDouble() * h * 0.45,
+                    this.getZ() + (rng.nextDouble() - 0.5) * hw * 2,
+                    (rng.nextDouble() - 0.5) * 0.02,
+                    rng.nextDouble() * 0.04 + 0.02,
+                    (rng.nextDouble() - 0.5) * 0.02);
+        }
+
+        if (this.tickCount % 40 == 0) {
+            this.level().addParticle(
+                    ParticleTypes.SOUL,
+                    this.getX() + (rng.nextDouble() - 0.5) * hw * 2,
+                    this.getY() + rng.nextDouble() * 0.3,
+                    this.getZ() + (rng.nextDouble() - 0.5) * hw * 2,
+                    0.0, 0.08, 0.0);
+        }
+    }
+
+    // ── Heart link accessors ──────────────────────────────────────────────────
+
+    public void linkToHeart(BlockPos pos) { this.linkedHeartPos = pos; }
+
+    @Nullable
+    public BlockPos getLinkedHeartPos()   { return linkedHeartPos; }
 
     // ── Persistence ───────────────────────────────────────────────────────────
 
@@ -100,9 +223,60 @@ public class SoulIronGolemEntity extends IronGolem {
         super.readAdditionalSaveData(tag);
         if (tag.contains("HeartX") && tag.contains("HeartY") && tag.contains("HeartZ")) {
             linkedHeartPos = new BlockPos(
-                    tag.getInt("HeartX"),
-                    tag.getInt("HeartY"),
-                    tag.getInt("HeartZ"));
+                    tag.getInt("HeartX"), tag.getInt("HeartY"), tag.getInt("HeartZ"));
+        }
+    }
+
+    // ── Inner goal: Repairing ─────────────────────────────────────────────────
+
+    /**
+     * Active while the golem is in repair mode AND has no combat target.
+     *
+     * <ul>
+     *   <li>Stops all navigation so the golem stands still.</li>
+     *   <li>Heals 2 HP every 2 s (40 ticks).</li>
+     *   <li>Automatically suspended the moment a target is acquired
+     *       (higher-priority {@link MeleeAttackGoal} takes over).</li>
+     *   <li>Resumes after combat if HP is still below 50 %.</li>
+     * </ul>
+     */
+    private class RepairGoal extends Goal {
+
+        private int healTimer = 0;
+
+        RepairGoal() {
+            // Claim MOVE so wandering/stroll goals don't fight us; LOOK so the
+            // golem's gaze is controlled by the slump animation rather than logic.
+            setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
+        }
+
+        @Override
+        public boolean canUse() {
+            return repairingState && SoulIronGolemEntity.this.getTarget() == null;
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            // Stop the moment a target is acquired — attack goals will take over.
+            return repairingState && SoulIronGolemEntity.this.getTarget() == null;
+        }
+
+        @Override
+        public void start() {
+            SoulIronGolemEntity.this.getNavigation().stop();
+            healTimer = 0;
+        }
+
+        @Override
+        public void tick() {
+            // Keep perfectly still
+            SoulIronGolemEntity.this.getNavigation().stop();
+
+            // Slowly regenerate HP
+            if (++healTimer >= 40) {
+                healTimer = 0;
+                SoulIronGolemEntity.this.heal(2.0f);   // 2 HP per 2 s
+            }
         }
     }
 }
