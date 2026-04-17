@@ -15,6 +15,7 @@ import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import village.automation.mod.blockentity.CookingBlockEntity;
 import village.automation.mod.blockentity.FarmBlockEntity;
+import village.automation.mod.blockentity.LumbermillBlockEntity;
 import village.automation.mod.blockentity.MineBlockEntity;
 import village.automation.mod.blockentity.SmelterBlockEntity;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
@@ -441,6 +442,8 @@ public class CourierGoal extends Goal {
                 transferAllFromContainer(mine.getOutputContainer(), courier.getCarriedInventory());
             } else if (be instanceof FarmBlockEntity farm) {
                 extractWheatFromContainer(farm.getOutputContainer(), courier.getCarriedInventory());
+            } else if (be instanceof LumbermillBlockEntity mill) {
+                transferAllFromContainer(mill.getOutputContainer(), courier.getCarriedInventory());
             }
 
             // Release the workplace lock — the block's output is now in our inventory
@@ -1051,6 +1054,64 @@ public class CourierGoal extends Goal {
                 .collect(java.util.stream.Collectors.toList());
     }
 
+    // ── Idle gathering ────────────────────────────────────────────────────────
+
+    /** Finds a mine, farm, or lumbermill with output items and starts navigating to gather them. */
+    private boolean tryStartGathering(ServerLevel level) {
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            BlockEntity be = level.getBlockEntity(workPos);
+            if (be instanceof MineBlockEntity mine && !isContainerEmpty(mine.getOutputContainer())) {
+                targetWorkplacePos = workPos;
+                navigateTo(workPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.GATHER_FROM_BLOCK;
+                return true;
+            } else if (be instanceof FarmBlockEntity farm && containerHasWheat(farm.getOutputContainer())) {
+                targetWorkplacePos = workPos;
+                navigateTo(workPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.GATHER_FROM_BLOCK;
+                return true;
+            } else if (be instanceof LumbermillBlockEntity mill && !isContainerEmpty(mill.getOutputContainer())) {
+                targetWorkplacePos = workPos;
+                navigateTo(workPos);
+                navTimeout = NAV_TIMEOUT;
+                phase = Phase.GATHER_FROM_BLOCK;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Nullable
+    private BlockPos findAnyChest(ServerLevel level) {
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return null;
+        for (BlockPos pos : heart.getRegisteredChests()) {
+            if (level.getBlockEntity(pos) instanceof Container) return pos;
+        }
+        return null;
+    }
+
+    private static boolean isContainerEmpty(SimpleContainer inv) {
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            if (!inv.getItem(i).isEmpty()) return false;
+        }
+        return true;
+    }
+
+    private static boolean containerHasWheat(SimpleContainer inv) {
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack s = inv.getItem(i);
+            if (!s.isEmpty() && s.is(Items.WHEAT)) return true;
+        }
+        return false;
+    }
+
+    /** Moves all items from a SimpleContainer source into a SimpleContainer dest. */
     private static void transferAllFromContainer(SimpleContainer from, SimpleContainer to) {
         for (int i = 0; i < from.getContainerSize(); i++) {
             ItemStack stack = from.getItem(i);
