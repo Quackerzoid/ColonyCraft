@@ -215,6 +215,12 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
 
     // ── Worker tracking ───────────────────────────────────────────────────────
 
+    /** Re-registers a resurrected (or externally created) worker with this heart's colony. */
+    public void registerWorker(UUID uuid) {
+        workerUUIDs.add(uuid);
+        setChanged();
+    }
+
     /** Registers a courier golem as belonging to this heart's colony. */
     public void registerCourier(UUID uuid) {
         courierUUIDs.add(uuid);
@@ -374,19 +380,30 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
                 }
             }
 
-            // No assigned worker — find an unemployed one and assign them
+            // No assigned worker — find an unemployed one and assign them.
+            // Prefer workers whose preferredJob matches the required job (e.g. a
+            // resurrected farmer gets their farm back before a generic worker does).
             if (assignedUUID == null) {
                 JobType requiredJob = wbe.getRequiredJob();
+                VillagerWorkerEntity preferred = null;
+                VillagerWorkerEntity fallback  = null;
                 for (UUID uuid : workerUUIDs) {
                     Entity entity = serverLevel.getEntity(uuid);
                     if (entity instanceof VillagerWorkerEntity worker
                             && worker.isAlive()
                             && worker.getJob() == JobType.UNEMPLOYED) {
-                        worker.assign(requiredJob, workPos);
-                        wbe.setAssignedWorkerUUID(worker.getUUID());
-                        setChanged();
-                        break;
+                        if (preferred == null && worker.getPreferredJob() == requiredJob) {
+                            preferred = worker;
+                        } else if (fallback == null) {
+                            fallback = worker;
+                        }
                     }
+                }
+                VillagerWorkerEntity chosen = preferred != null ? preferred : fallback;
+                if (chosen != null) {
+                    chosen.assign(requiredJob, workPos);
+                    wbe.setAssignedWorkerUUID(chosen.getUUID());
+                    setChanged();
                 }
             }
         }

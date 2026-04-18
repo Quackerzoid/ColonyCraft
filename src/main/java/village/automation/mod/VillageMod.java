@@ -393,6 +393,18 @@ public class VillageMod {
                             .clientTrackingRange(10)
                             .build(MODID + ":villager_worker"));
 
+    // ── Villager Soul entity ─────────────────────────────────────────────────
+    public static final DeferredHolder<EntityType<?>, EntityType<village.automation.mod.entity.VillagerSoulEntity>> VILLAGER_SOUL_ENTITY =
+            ENTITY_TYPES.register("villager_soul",
+                    () -> EntityType.Builder.<village.automation.mod.entity.VillagerSoulEntity>of(
+                                    village.automation.mod.entity.VillagerSoulEntity::new, MobCategory.MISC)
+                            .sized(0.35f, 0.6f)
+                            .clientTrackingRange(8)
+                            .build(MODID + ":villager_soul"));
+
+    public static final ModelLayerLocation VILLAGER_SOUL_LAYER =
+            new ModelLayerLocation(ResourceLocation.fromNamespaceAndPath(MODID, "villager_soul"), "main");
+
     // ── Soul Iron Golem entity ───────────────────────────────────────────────
     public static final DeferredHolder<EntityType<?>, EntityType<village.automation.mod.entity.SoulIronGolemEntity>> SOUL_IRON_GOLEM =
             ENTITY_TYPES.register("soul_iron_golem",
@@ -405,6 +417,11 @@ public class VillageMod {
     public static final DeferredHolder<MenuType<?>, MenuType<village.automation.mod.menu.SoulIronGolemMenu>> SOUL_IRON_GOLEM_MENU =
             MENU_TYPES.register("soul_iron_golem_menu",
                     () -> IMenuTypeExtension.create(village.automation.mod.menu.SoulIronGolemMenu::new));
+
+    // Pale soul-white base (#E8E8FF) with soul-blue highlight (#4040C0)
+    public static final DeferredItem<SpawnEggItem> VILLAGER_SOUL_SPAWN_EGG =
+            ITEMS.register("villager_soul_spawn_egg",
+                    () -> new SpawnEggItem(VILLAGER_SOUL_ENTITY.get(), 0xE8E8FF, 0x4040C0, new Item.Properties()));
 
     // Brown base (#563C33) with blue highlight (#60A3D9)
     public static final DeferredItem<SpawnEggItem> VILLAGER_WORKER_SPAWN_EGG =
@@ -444,6 +461,7 @@ public class VillageMod {
                         output.accept(VILLAGE_UPGRADE_II.get());
                         output.accept(VILLAGE_UPGRADE_III.get());
                         output.accept(SOUL_PUMPKIN_ITEM.get());
+                        output.accept(VILLAGER_SOUL_SPAWN_EGG.get());
                         output.accept(VILLAGER_WORKER_SPAWN_EGG.get());
                         output.accept(DEV_LEVEL_UP.get());
                         output.accept(EXAMPLE_ITEM.get());
@@ -561,6 +579,7 @@ public class VillageMod {
     }
 
     private static void onEntityAttributes(EntityAttributeCreationEvent event) {
+        event.put(VILLAGER_SOUL_ENTITY.get(), village.automation.mod.entity.VillagerSoulEntity.createAttributes().build());
         event.put(VILLAGER_WORKER.get(), VillagerWorkerEntity.createAttributes().build());
         event.put(COURIER.get(), CourierEntity.createAttributes().build());
         event.put(SOUL_IRON_GOLEM.get(), village.automation.mod.entity.SoulIronGolemEntity.createAttributes().build());

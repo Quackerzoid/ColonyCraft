@@ -49,6 +49,8 @@ import net.minecraft.world.level.Level;
 import village.automation.mod.menu.VillagerWorkerMenu;
 
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.damagesource.DamageSource;
+import village.automation.mod.VillageMod;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -219,6 +221,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
     private String baseName = "";
     /** Current job. */
     private JobType job = JobType.UNEMPLOYED;
+    /**
+     * Last job this worker held. Persisted so the Village Heart can prefer
+     * re-assigning a resurrected worker to the same profession.
+     */
+    private JobType preferredJob = JobType.UNEMPLOYED;
     /** Position of the assigned workplace, or {@code null} when unemployed. */
     @Nullable
     private BlockPos workplacePos = null;
@@ -488,6 +495,12 @@ public class VillagerWorkerEntity extends AbstractVillager {
     /** Server-side job field. Use {@link #getSyncedJob()} client-side. */
     public JobType getJob() { return job; }
 
+    /**
+     * The last non-UNEMPLOYED job this worker held. Used by the Village Heart
+     * to prefer re-assigning resurrected workers to their former profession.
+     */
+    public JobType getPreferredJob() { return preferredJob; }
+
     @Nullable
     public BlockPos getWorkplacePos() { return workplacePos; }
 
@@ -510,6 +523,9 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public void assign(JobType newJob, @Nullable BlockPos workplace) {
         this.job          = newJob;
         this.workplacePos = workplace;
+        if (newJob != JobType.UNEMPLOYED) {
+            this.preferredJob = newJob;
+        }
         this.entityData.set(DATA_JOB, newJob.name());
         refreshDisplayName();
     }
@@ -529,6 +545,24 @@ public class VillagerWorkerEntity extends AbstractVillager {
     private void refreshDisplayName() {
         if (!baseName.isEmpty()) {
             setCustomName(Component.literal(job.getDisplayPrefix() + baseName));
+        }
+    }
+
+    // ── Death → soul spawn ────────────────────────────────────────────────────
+
+    @Override
+    public void die(DamageSource source) {
+        super.die(source);
+        if (!this.level().isClientSide() && this.level() instanceof ServerLevel serverLevel) {
+            CompoundTag data = new CompoundTag();
+            this.saveWithoutId(data);
+
+            VillagerSoulEntity soul = VillageMod.VILLAGER_SOUL_ENTITY.get().create(serverLevel);
+            if (soul != null) {
+                soul.setPos(this.getX(), this.getY() + 0.5, this.getZ());
+                soul.setStoredVillagerData(data);
+                serverLevel.addFreshEntity(soul);
+            }
         }
     }
 
@@ -604,6 +638,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         // Employment
         tag.putString("BaseName", baseName);
         tag.putString("Job", job.name());
+        tag.putString("PreferredJob", preferredJob.name());
         if (workplacePos != null) {
             tag.putInt("WorkplaceX", workplacePos.getX());
             tag.putInt("WorkplaceY", workplacePos.getY());
@@ -666,6 +701,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
             this.job = JobType.valueOf(tag.getString("Job"));
         } catch (IllegalArgumentException ignored) {
             this.job = JobType.UNEMPLOYED;
+        }
+        try {
+            this.preferredJob = JobType.valueOf(tag.getString("PreferredJob"));
+        } catch (IllegalArgumentException ignored) {
+            this.preferredJob = this.job != JobType.UNEMPLOYED ? this.job : JobType.UNEMPLOYED;
         }
         if (tag.contains("WorkplaceX")) {
             this.workplacePos = new BlockPos(

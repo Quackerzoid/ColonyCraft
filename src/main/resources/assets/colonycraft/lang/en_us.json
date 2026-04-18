@@ -45,6 +45,8 @@
   "item.colonycraft.soul_eye": "Soul Eye",
   "item.colonycraft.soul_infused_redstone": "Soul Infused Redstone",
   "entity.colonycraft.courier_redstone": "Redstone Copper Soul Golem",
+  "entity.colonycraft.villager_soul": "Villager Soul",
+  "item.colonycraft.villager_soul_spawn_egg": "Villager Soul Spawn Egg",
   "entity.colonycraft.villager_worker": "Villager Worker",
   "container.colonycraft.villager_worker": "Villager Worker",
   "item.colonycraft.villager_worker_spawn_egg": "Villager Worker Spawn Egg",

@@ -15,6 +15,8 @@ import village.automation.mod.client.renderer.CourierModel;
 import village.automation.mod.client.renderer.CourierRenderer;
 import village.automation.mod.client.renderer.SoulIronGolemRenderer;
 import village.automation.mod.screen.SoulIronGolemScreen;
+import village.automation.mod.client.renderer.VillagerSoulModel;
+import village.automation.mod.client.renderer.VillagerSoulRenderer;
 import village.automation.mod.client.renderer.VillagerWorkerRenderer;
 import village.automation.mod.screen.AnimalPenBlockScreen;
 import village.automation.mod.screen.BeekeeperBlockScreen;
@@ -68,6 +70,7 @@ public class VillageModClient {
 
     @SubscribeEvent
     static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerEntityRenderer(VillageMod.VILLAGER_SOUL_ENTITY.get(), VillagerSoulRenderer::new);
         event.registerEntityRenderer(VillageMod.VILLAGER_WORKER.get(), VillagerWorkerRenderer::new);
         event.registerEntityRenderer(VillageMod.COURIER.get(), CourierRenderer::new);
         event.registerEntityRenderer(VillageMod.SOUL_IRON_GOLEM.get(), SoulIronGolemRenderer::new);
@@ -79,5 +82,6 @@ public class VillageModClient {
     @SubscribeEvent
     static void onRegisterLayerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
         event.registerLayerDefinition(VillageMod.COURIER_LAYER, CourierModel::createBodyLayer);
+        event.registerLayerDefinition(VillageMod.VILLAGER_SOUL_LAYER, VillagerSoulModel::createBodyLayer);
     }
 }
