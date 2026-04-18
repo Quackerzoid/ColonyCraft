@@ -89,7 +89,7 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
             this.containerData = bk.data;
         } else {
             this.blockEntity   = null;
-            this.containerData = new SimpleContainerData(4);
+            this.containerData = new SimpleContainerData(6);
         }
 
         addFuelSlots(this.blockEntity);
@@ -189,10 +189,14 @@ public class BeekeeperBlockMenu extends AbstractContainerMenu {
     public boolean isFuelBurning()    { return containerData.get(3) != 0; }
     public boolean hasFuel()          { return containerData.get(4) != 0; }
 
+    /** Max smoking timer for the current cycle (varies by beekeeper level). */
+    public int getMaxSmokingTimer() { return containerData.get(5); }
+
     /** Smoking progress 0.0–1.0 (0 = fresh/idle, 1 = almost done). */
     public float getSmokingProgress() {
-        int t = getSmokingTimer();
-        if (t <= 0) return 0f;
-        return 1.0f - (t / (float) BeekeeperBlockEntity.SMOKE_TICKS);
+        int t   = getSmokingTimer();
+        int max = getMaxSmokingTimer();
+        if (t <= 0 || max <= 0) return 0f;
+        return 1.0f - ((float) t / max);
     }
 }

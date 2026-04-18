@@ -58,10 +58,10 @@ import java.util.*;
 public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Constants ─────────────────────────────────────────────────────────────
-    public static final int MAX_BEES    = 4;
-    public static final int MAX_POLLEN  = 32;
+    public static final int MAX_BEES         = 4;
+    public static final int MAX_POLLEN       = 32;
     public static final int BEE_CYCLE_TICKS  = 400;  // 20 s per bee pollination cycle
-    public static final int SMOKE_TICKS      = 200;  // 10 s per honeycomb production
+    public static final int SMOKE_TICKS      = 200;  // fallback only — actual duration set by worker level
 
     // ── Inventories ───────────────────────────────────────────────────────────
     private final SimpleContainer fuelInput       = new SimpleContainer(9);
@@ -77,6 +77,10 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
     private int pollenCount  = 0;
     /** Ticks remaining in the current smoking cycle, or 0 if not smoking. */
     private int smokingTimer = 0;
+    /** Ticks for the current cycle as set when it started (for progress bar). */
+    private int maxSmokingTimer = SMOKE_TICKS;
+    /** Level-adjusted duration for the next smoking cycle; updated by the worker goal each tick. */
+    private int workerSmokeTicks = SMOKE_TICKS;
     /**
      * Countdown set to 10 by {@link BeekeeperWorkGoal} each tick the beekeeper
      * worker is standing at the block; decremented once per server tick.
@@ -89,21 +93,17 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── ContainerData ─────────────────────────────────────────────────────────
     // Index 0 — pollenCount
-    // Index 1 — smokingTimer
+    // Index 1 — smokingTimer  (counts down to 0)
     // Index 2 — bee count
     // Index 3 — actively smoking: workerRecentTicks > 0 AND smokingTimer > 0  (0/1)
     // Index 4 — hasFuel: at least one log in fuelInput  (0/1)
-    //
-    // Uses a plain int[] so that set(i,v) actually stores the value on the CLIENT.
-    // The previous lambda form only synced indices 0-1 — indices 2-4 were never
-    // written on the client side, causing bee count, burning-state and fuel-flag
-    // to always read as 0/false in the GUI.
-    private final int[] syncData = new int[5];
+    // Index 5 — maxSmokingTimer (ticks when cycle started, for progress bar)
+    private final int[] syncData = new int[6];
 
     public final ContainerData data = new ContainerData() {
-        @Override public int get(int i)         { return (i >= 0 && i < 5) ? syncData[i] : 0; }
-        @Override public void set(int i, int v) { if (i >= 0 && i < 5) syncData[i] = v; }
-        @Override public int getCount()         { return 5; }
+        @Override public int get(int i)         { return (i >= 0 && i < 6) ? syncData[i] : 0; }
+        @Override public void set(int i, int v) { if (i >= 0 && i < 6) syncData[i] = v; }
+        @Override public int getCount()         { return 6; }
     };
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -143,6 +143,7 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
         syncData[2] = claimedBees.size();
         syncData[3] = (workerRecentTicks > 0 && smokingTimer > 0) ? 1 : 0;
         syncData[4] = hasFuel() ? 1 : 0;
+        syncData[5] = maxSmokingTimer;
         setChanged();
     }
 
@@ -207,6 +208,9 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
     /** Whether the worker was at the block within the last ~10 ticks (read by the GUI). */
     public boolean isWorkerPresent() { return workerRecentTicks > 0; }
 
+    /** Called by the beekeeper goal each tick to pass the worker's level-adjusted smoke duration. */
+    public void setWorkerSmokeTicks(int ticks) { workerSmokeTicks = Math.max(1, ticks); }
+
     private void tickSmoking() {
         // Smoking only progresses while the beekeeper is (or was very recently) working here
         if (workerRecentTicks <= 0) return;
@@ -223,7 +227,8 @@ public class BeekeeperBlockEntity extends WorkplaceBlockEntityBase {
         } else if (pollenCount > 0) {
             // Start next smoking cycle if fuel is available and output has space
             if (outputHasSpace() && consumeFuel()) {
-                smokingTimer = SMOKE_TICKS;
+                maxSmokingTimer = workerSmokeTicks;
+                smokingTimer    = maxSmokingTimer;
             }
         }
     }

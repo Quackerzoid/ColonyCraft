@@ -3,12 +3,15 @@ package village.automation.mod.screen;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import com.mojang.math.Axis;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import village.automation.mod.blockentity.BeekeeperBlockEntity;
 import village.automation.mod.menu.BeekeeperBlockMenu;
 
@@ -193,16 +196,25 @@ public class BeekeeperBlockScreen extends AbstractContainerScreen<BeekeeperBlock
                    0xFF1A1A1A);
 
             if (occupied && dummyBee != null) {
-                // Render bee face centred in the slot inner area (14×14 px)
-                // Passing the slot centre as the "mouse" position keeps the bee
-                // looking straight ahead rather than tracking the cursor.
+                // Semi-side profile: pose the dummy bee forward then rotate ~40° around Y.
+                dummyBee.yBodyRot  = 180f;
+                dummyBee.yHeadRot  = 180f;
+                dummyBee.yHeadRotO = 180f;
+                dummyBee.setYRot(180f);
+                dummyBee.setXRot(0f);
+
+                // Standard inventory flip (Z=180°) + semi-side Y rotation
+                Quaternionf pose = new Quaternionf(Axis.ZP.rotationDegrees(180f));
+                pose.mul(Axis.YP.rotationDegrees(40f));
+
                 int cx = dx + DOT_SIZE / 2;
-                int cy = dy + DOT_SIZE / 2;
-                InventoryScreen.renderEntityInInventoryFollowsMouse(
+                InventoryScreen.renderEntityInInventory(
                         g,
-                        dx + 1, dy + 1, dx + DOT_SIZE - 1, dy + DOT_SIZE - 1,
-                        7, 0f,
-                        cx, cy,
+                        cx, (float)(dy + DOT_SIZE - 1),
+                        7,
+                        new Vector3f(0f, 0f, 0f),
+                        pose,
+                        null,
                         dummyBee);
             }
         }

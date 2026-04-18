@@ -138,6 +138,7 @@ public class BeekeeperWorkGoal extends Goal {
     private void tickWork(BeekeeperBlockEntity be) {
         // Mark presence every tick — this is what gates tickSmoking in the block entity
         be.markWorkerPresent();
+        be.setWorkerSmokeTicks(keeper.getBeekeeperSmokeTicks());
 
         // Look down at the beehive while working
         if (blockPos != null) {
