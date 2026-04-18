@@ -52,7 +52,6 @@ import java.util.EnumSet;
 public class SmelterWorkGoal extends Goal {
 
     // ── Tuning ────────────────────────────────────────────────────────────────
-    private static final int    SMELT_TICKS      = 100;  // 5 s (blast-furnace speed)
     private static final int    PARTICLE_INTERVAL = 20;  // particle burst every second
     private static final double WALK_SPEED        = 0.6;
     private static final double WORK_REACH_SQ     = 6.25; // 2.5 blocks, squared
@@ -154,7 +153,7 @@ public class SmelterWorkGoal extends Goal {
         if (hasOre && hasFuel) {
             sbe.setNeedsOre(false);
             sbe.setNeedsFuel(false);
-            smeltTimer       = SMELT_TICKS * smelter.getWorkSwings();
+            smeltTimer       = smelter.getSmelterSmeltTicks();
             particleCooldown = PARTICLE_INTERVAL;
             setLit(level, true);
             state            = STATE_SMELTING;
@@ -276,7 +275,7 @@ public class SmelterWorkGoal extends Goal {
 
         if (!nextOre.isEmpty() && moreFuel && outputRoom) {
             // More ore in the slot and fuel available — continue the batch
-            smeltTimer       = SMELT_TICKS * smelter.getWorkSwings();
+            smeltTimer       = smelter.getSmelterSmeltTicks();
             particleCooldown = PARTICLE_INTERVAL;
             // state remains STATE_SMELTING; LIT stays true
         } else {

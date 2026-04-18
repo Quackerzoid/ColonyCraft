@@ -367,6 +367,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
         return levelScaledTicks(1200, 100);
     }
 
+    /** Ticks per smelt operation for the smelter (60 s → 5 s over levels 1–20). */
+    public int getSmelterSmeltTicks() {
+        return levelScaledTicks(1200, 100);
+    }
+
     /**
      * Chance (0.0–0.2) that the farmer accidentally destroys farmland while harvesting.
      * Linear: 20 % at level 0, 0 % at level 20.
