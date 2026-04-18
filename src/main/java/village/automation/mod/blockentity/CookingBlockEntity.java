@@ -27,17 +27,21 @@ public class CookingBlockEntity extends WorkplaceBlockEntityBase {
     private boolean needsIngredients = false;
 
     // ── GUI sync ──────────────────────────────────────────────────────────────
-    // Index 0 = cookTimer (200 when a batch starts, counts down to 0, 0 = idle).
+    // Index 0 = cookTimer  (counts down to 0 while cooking; 0 = idle).
+    // Index 1 = maxCookTimer (value when cooking started, for progress bar).
     // Pushed every tick by ChefWorkGoal; read by CookingBlockMenu / screen.
-    private final int[] syncData = new int[1];
+    private final int[] syncData = new int[]{0, 1200};
     public final ContainerData data = new ContainerData() {
-        @Override public int get(int i)         { return (i == 0) ? syncData[0] : 0; }
-        @Override public void set(int i, int v) { if (i == 0) syncData[0] = v; }
-        @Override public int getCount()         { return 1; }
+        @Override public int get(int i)         { return (i >= 0 && i < 2) ? syncData[i] : 0; }
+        @Override public void set(int i, int v) { if (i >= 0 && i < 2) syncData[i] = v; }
+        @Override public int getCount()         { return 2; }
     };
 
     /** Called by {@link village.automation.mod.entity.goal.ChefWorkGoal} each tick. */
-    public void setCookProgress(int timer) { syncData[0] = timer; }
+    public void setCookProgress(int timer, int maxTimer) {
+        syncData[0] = timer;
+        syncData[1] = maxTimer;
+    }
 
     public CookingBlockEntity(BlockPos pos, BlockState state) {
         super(VillageMod.COOKING_BLOCK_BE.get(), pos, state);

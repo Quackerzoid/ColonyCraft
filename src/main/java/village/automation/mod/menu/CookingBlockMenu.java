@@ -88,7 +88,7 @@ public class CookingBlockMenu extends AbstractContainerMenu {
             this.containerData = cook.data;
         } else {
             this.blockEntity   = null;
-            this.containerData = new SimpleContainerData(1);
+            this.containerData = new SimpleContainerData(2);
         }
 
         addInputSlots(this.blockEntity);
@@ -186,13 +186,18 @@ public class CookingBlockMenu extends AbstractContainerMenu {
     public JobType getWorkerJob()  { return workerJob;  }
     public boolean hasWorker()     { return !workerName.isEmpty(); }
 
-    /** Raw cook timer (200 = just started, 0 = idle). */
+    /** Raw cook timer (counts down to 0 while cooking; 0 = idle). */
     public int getCookTimer() { return containerData.get(0); }
 
-    /** Progress 0.0 (just started) → 1.0 (done/idle). */
+    /** Max cook timer set when cooking began (varies by chef level). */
+    public int getMaxCookTimer() { return containerData.get(1); }
+
+    /** Progress 0.0 (just started) → 1.0 (done). */
     public float getCookProgress() {
-        int t = getCookTimer();
-        return t <= 0 ? 0f : 1.0f - (t / 200.0f);
+        int t   = getCookTimer();
+        int max = getMaxCookTimer();
+        if (t <= 0 || max <= 0) return 0f;
+        return 1.0f - ((float) t / max);
     }
 
     public boolean isCooking() { return getCookTimer() > 0; }

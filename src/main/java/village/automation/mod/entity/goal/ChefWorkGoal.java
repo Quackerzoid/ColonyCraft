@@ -43,13 +43,13 @@ import java.util.EnumSet;
  */
 public class ChefWorkGoal extends Goal {
 
-    private static final int    COOK_TICKS        = 200;   // 10 s per item
     private static final int    PARTICLE_INTERVAL  = 20;   // burst every second
     private static final double WALK_SPEED         = 0.6;
     private static final double WORK_REACH_SQ      = 6.25; // 2.5 blocks
 
     private final VillagerWorkerEntity chef;
     private int cookTimer        = 0;
+    private int maxCookTimer     = 1200;
     private int particleCooldown = 0;
 
     /** The ingredient currently being cooked, or null when idle. */
@@ -73,8 +73,9 @@ public class ChefWorkGoal extends Goal {
 
     @Override
     public void stop() {
-        cookTimer        = 0;
-        particleCooldown = 0;
+        cookTimer         = 0;
+        maxCookTimer      = 1200;
+        particleCooldown  = 0;
         currentIngredient = null;
     }
 
@@ -97,7 +98,7 @@ public class ChefWorkGoal extends Goal {
             }
             cookTimer = 0;
             currentIngredient = null;
-            cooking.setCookProgress(0);
+            cooking.setCookProgress(0, maxCookTimer);
             return;
         }
 
@@ -118,7 +119,8 @@ public class ChefWorkGoal extends Goal {
 
             // Ingredient available — start cooking (duration scales with level)
             cooking.setNeedsIngredients(false);
-            cookTimer        = COOK_TICKS * chef.getWorkSwings();
+            maxCookTimer     = chef.getChefCookTicks();
+            cookTimer        = maxCookTimer;
             particleCooldown = PARTICLE_INTERVAL;
 
         } else {
@@ -147,7 +149,7 @@ public class ChefWorkGoal extends Goal {
         }
 
         // Mirror current timer into the block entity for GUI sync
-        cooking.setCookProgress(cookTimer);
+        cooking.setCookProgress(cookTimer, maxCookTimer);
     }
 
     // ── Ingredient helpers ────────────────────────────────────────────────────

@@ -59,12 +59,6 @@ public class CookingBlockScreen extends AbstractContainerScreen<CookingBlockMenu
     private static final int COL_BAR_BG      = 0xFF1A1A1A;
     private static final int COL_BAR_FG      = 0xFFDD6611;
 
-    // ── Progress arrow (between the two grids, panel-relative) ───────────────
-    /** x of the arrow area centre — 3 px right of the 3rd input col right edge. */
-    private static final int ARROW_CX = 8 + 3 * 18 + 9;   // = 8+54+9 = 71
-    private static final int ARROW_TOP    = 50;
-    private static final int ARROW_BOTTOM = 88;
-
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public CookingBlockScreen(CookingBlockMenu menu, Inventory inventory, Component title) {
@@ -103,20 +97,6 @@ public class CookingBlockScreen extends AbstractContainerScreen<CookingBlockMenu
             g.fill(sx,     sy,     sx + 16, sy + 16, COL_SLOT_LT);
         }
 
-        // ── Vertical progress arrow (between grids) ───────────────────────────
-        float progress = menu.getCookProgress();
-        // Dark background track
-        g.fill(x + ARROW_CX - 5, y + ARROW_TOP,    x + ARROW_CX + 5, y + ARROW_BOTTOM, COL_BAR_BG);
-        // Filled portion (grows downward as cooking progresses)
-        int fillH = (int) ((ARROW_BOTTOM - ARROW_TOP) * progress);
-        if (fillH > 0) {
-            g.fill(x + ARROW_CX - 4, y + ARROW_TOP,    x + ARROW_CX + 4, y + ARROW_TOP + fillH, COL_BAR_FG);
-        }
-        // Arrow tip at bottom
-        g.fill(x + ARROW_CX - 4, y + ARROW_BOTTOM,     x + ARROW_CX + 4, y + ARROW_BOTTOM + 2, COL_DIVIDER);
-        g.fill(x + ARROW_CX - 2, y + ARROW_BOTTOM + 2, x + ARROW_CX + 2, y + ARROW_BOTTOM + 4, COL_DIVIDER);
-        g.fill(x + ARROW_CX - 1, y + ARROW_BOTTOM + 4, x + ARROW_CX + 1, y + ARROW_BOTTOM + 5, COL_DIVIDER);
-
         // ── Sidebar ───────────────────────────────────────────────────────────
         final int sX = x + SIDE_X;
         g.fill(sX + 1,          y + 1,          sX + SIDE_W - 1, y + MAIN_H - 1, COL_SIDE_BG);
@@ -133,6 +113,7 @@ public class CookingBlockScreen extends AbstractContainerScreen<CookingBlockMenu
         g.fill(sX + 4, y + 140, sX + SIDE_W - 4, y + 141, COL_DIVIDER);  // below progress bar
 
         // ── Sidebar progress bar ──────────────────────────────────────────────
+        float progress = menu.getCookProgress();
         // Track
         g.fill(sX + 6, y + 96, sX + SIDE_W - 6, y + 108, COL_BAR_BG);
         // Fill

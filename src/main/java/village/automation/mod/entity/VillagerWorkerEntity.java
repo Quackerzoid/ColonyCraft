@@ -327,16 +327,24 @@ public class VillagerWorkerEntity extends AbstractVillager {
     }
 
     /**
-     * Ticks the blacksmith needs to complete one craft.
-     * Exponential curve: 1200 ticks (60 s) at level 1, 100 ticks (5 s) at level 20.
-     * Level 0 is treated as level 1.
+     * Exponential tick curve shared by professions that scale from 60 s at level 1
+     * to 5 s at level 20. Level 0 is clamped to level 1.
      *
-     * <p>Formula: {@code 1200 × (100/1200)^((level−1)/19)}
+     * <p>Formula: {@code maxTicks × (minTicks/maxTicks)^((level−1)/19)}
      */
-    public int getSmithCraftTicks() {
+    private int levelScaledTicks(double maxTicks, double minTicks) {
         int lvl = Math.max(1, Math.min(getLevel(), MAX_LEVEL));
-        double t = 1200.0 * Math.pow(100.0 / 1200.0, (lvl - 1) / 19.0);
-        return (int) Math.round(t);
+        return (int) Math.round(maxTicks * Math.pow(minTicks / maxTicks, (lvl - 1) / 19.0));
+    }
+
+    /** Ticks the blacksmith needs to complete one craft (60 s → 5 s over levels 1–20). */
+    public int getSmithCraftTicks() {
+        return levelScaledTicks(1200, 100);
+    }
+
+    /** Ticks the chef needs to cook one item (60 s → 5 s over levels 1–20). */
+    public int getChefCookTicks() {
+        return levelScaledTicks(1200, 100);
     }
 
     /**
