@@ -14,6 +14,8 @@ allays?????
 =========================== VILLAGER LEVEL SYSTEMS =========================
 - The farmer should not be tilling soil that wasnt already tilled by the player. He should look at the crop when he digs at it and make particles appear with crop breaking noises for each swing. it should then after being broken take the same amount of swings to replace the crop
 
+Farmer has an exponential curve of swing amount of 10 to 1 when he hits 20 but he has bugs ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 - Skill curve todo:
 butcher
 animal keeper
