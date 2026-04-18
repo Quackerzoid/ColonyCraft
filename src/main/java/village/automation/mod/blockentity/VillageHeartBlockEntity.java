@@ -614,7 +614,6 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         BlockPos hp = getBlockPos();
 
         if (outcome == RaidOutcome.VICTORY) {
-            raidCooldownUntil = level.getGameTime() + 72000L;
             float scale = raidMaxWaves / 3.0f;
             for (ItemStack stack : RaidLootTable.rollWithLevel(level.getRandom(), raidWave, level)) {
                 int cnt = Math.min((int)(stack.getCount() * scale), stack.getMaxStackSize());
@@ -624,7 +623,6 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             }
             broadcastTitle(level, "§aRaid Defeated! §7Your village stands strong.", 96);
         } else if (outcome == RaidOutcome.DEFEAT) {
-            raidCooldownUntil = level.getGameTime() + 24000L;
             broadcastTitle(level, "§cYour village has fallen...", 96);
         }
 

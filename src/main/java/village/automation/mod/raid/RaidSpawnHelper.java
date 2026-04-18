@@ -275,6 +275,11 @@ public final class RaidSpawnHelper {
         target.startRiding(raider, true);
         target.getPersistentData().putBoolean("Kidnapped", true);
         RaidEventHandler.startKidnapTimer(raider.getUUID());
+
+        // Carrying a villager slows the raider by 50%
+        var speedAttr = raider.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttr != null) speedAttr.setBaseValue(speedAttr.getBaseValue() * 0.5);
+
         String name = target.getCustomName() != null
                 ? target.getCustomName().getString() : "A villager";
         be.broadcastActionBar(level, "§c" + name + " has been kidnapped!", 96);
@@ -382,7 +387,10 @@ public final class RaidSpawnHelper {
         }
 
         @Override public boolean canUse() {
-            return mob.getTarget() == null && !mob.getNavigation().isInProgress();
+            // Do not compete with the retreat navigation
+            return mob.getTarget() == null
+                    && !mob.getPersistentData().getBoolean("Retreating")
+                    && !mob.getNavigation().isInProgress();
         }
 
         @Override public boolean canContinueToUse() {

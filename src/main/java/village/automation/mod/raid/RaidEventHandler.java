@@ -169,19 +169,50 @@ public final class RaidEventHandler {
         Iterator<Map.Entry<UUID, Integer>> it = kidnapTimers.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<UUID, Integer> entry = it.next();
+
+            Entity e = level.getEntity(entry.getKey());
+            if (!(e instanceof PathfinderMob raider) || !raider.isAlive()) {
+                it.remove();
+                continue;
+            }
+
+            // Find the kidnapped passenger (if still present)
+            VillagerWorkerEntity victim = raider.getPassengers().stream()
+                    .filter(p -> p instanceof VillagerWorkerEntity
+                            && p.getPersistentData().getBoolean("Kidnapped"))
+                    .map(p -> (VillagerWorkerEntity) p)
+                    .findFirst().orElse(null);
+
+            if (victim == null) {
+                // Passenger was already released or fell off
+                it.remove();
+                continue;
+            }
+
+            // If raider has crossed 2× the territory radius, the escape is complete:
+            // kill the villager normally (triggers soul conversion etc.) and remove the raider.
+            VillageHeartBlockEntity be =
+                    VillageHeartBlockEntity.findNearestWithin(level, raider.blockPosition(), 600);
+            if (be != null) {
+                BlockPos hp      = be.getBlockPos();
+                double escapeR   = be.getRadius() * 2.0;
+                double distSq    = raider.distanceToSqr(hp.getX(), hp.getY(), hp.getZ());
+                if (distSq > escapeR * escapeR) {
+                    victim.stopRiding();
+                    victim.getPersistentData().remove("Kidnapped");
+                    victim.hurt(level.damageSources().generic(), Float.MAX_VALUE);
+                    raider.discard();
+                    it.remove();
+                    continue;
+                }
+            }
+
+            // Countdown: release the worker when the timer expires
             int remaining = entry.getValue() - 1;
             if (remaining <= 0) {
+                victim.stopRiding();
+                victim.getPersistentData().remove("Kidnapped");
                 it.remove();
-                Entity raider = level.getEntity(entry.getKey());
-                if (raider instanceof PathfinderMob mob) {
-                    mob.getPassengers().stream()
-                       .filter(p -> p instanceof VillagerWorkerEntity
-                               && p.getPersistentData().getBoolean("Kidnapped"))
-                       .forEach(p -> {
-                           p.stopRiding();
-                           p.getPersistentData().remove("Kidnapped");
-                       });
-                }
             } else {
                 entry.setValue(remaining);
             }
