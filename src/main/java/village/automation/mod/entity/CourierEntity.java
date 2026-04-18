@@ -415,6 +415,9 @@ public class CourierEntity extends PathfinderMob {
 
     public void clearCarried() { carriedInventory.clearContent(); }
 
+    @Override
+    public boolean isPersistenceRequired() { return true; }
+
     // ── NBT ───────────────────────────────────────────────────────────────────
 
     @Override

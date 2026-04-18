@@ -109,6 +109,9 @@ public class VillageBeeEntity extends Bee {
         }
     }
 
+    @Override
+    public boolean isPersistenceRequired() { return true; }
+
     // ── NBT ───────────────────────────────────────────────────────────────────
 
     @Override

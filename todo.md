@@ -5,9 +5,13 @@ villager happiness system
 villager age?
 CUSTOM WANDERING MERCHANT!!!!! (uses the shopkeeper (sells excess for emeralds) or player (you can buy animals))
 merchants wants and rates in his inventory changes based on what youve already sold - making diversity better
+
 SHOPKEEPER!!!!! (they sit at their block and you designate what you want them to sell of your resources)
+
 the tavernkeep - gives beer to villagers in the evening to increase happiness!
+
 the bard - during day roams the village and goes up to the unhappiest villagers and increases their happiness / during evening plays in the tavern to increase happiness even more
+
 enchanter
 brewer
 allays?????
@@ -37,7 +41,6 @@ animal keeper
 
 
 ============================ RAIDS ==================================
-bell functionality
 bell golem - when another golem enters combat or he does go ring the bell then patrol the bell and protect
 add golem limit
 soul iron golem with wither rose for ranged attacks
@@ -57,7 +60,6 @@ proper heart gui (Somewhat Implemented)
 
 
 ============================ KNOWN BUGS/ISSUES =====================================
-SLOW VILLAGER WALK SPEED!!!!!!!!!!
 !!!!!!!make villagers persistent!!!!!
 
 Village Bees continue entering a Village beehive even after it has been destroyed

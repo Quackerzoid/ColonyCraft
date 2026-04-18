@@ -629,6 +629,9 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public void setSmithCurrentRecipe(SmithRecipe r)  { smithCurrentRecipe  = r; }
     public void tickSmithCraftingTimer() { if (smithCraftingTimer > 0) smithCraftingTimer--; }
 
+    @Override
+    public boolean isPersistenceRequired() { return true; }
+
     // ── NBT save / load ──────────────────────────────────────────────────────
 
     @Override

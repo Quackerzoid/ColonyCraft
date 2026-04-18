@@ -153,6 +153,9 @@ public class VillagerSoulEntity extends PathfinderMob {
         return super.mobInteract(player, hand);
     }
 
+    @Override
+    public boolean isPersistenceRequired() { return true; }
+
     // ── Persistence ───────────────────────────────────────────────────────────
 
     @Override

@@ -260,6 +260,9 @@ public class SoulIronGolemEntity extends IronGolem {
     @Nullable
     public BlockPos getLinkedHeartPos()   { return linkedHeartPos; }
 
+    @Override
+    public boolean isPersistenceRequired() { return true; }
+
     // ── Persistence ───────────────────────────────────────────────────────────
 
     @Override
