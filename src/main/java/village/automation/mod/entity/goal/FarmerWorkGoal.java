@@ -92,6 +92,7 @@ public class FarmerWorkGoal extends Goal {
         if (requestCooldown > 0) requestCooldown--;
         if (!farmer.level().isDay()) return false;
         if (farmer.isTooHungryToWork()) return false;
+        if (farmer.isTooUnhappyToWork()) return false;
         if (scanCooldown > 0) { scanCooldown--; return false; }
         scanCooldown = SCAN_INTERVAL;
 
@@ -157,6 +158,7 @@ public class FarmerWorkGoal extends Goal {
     public boolean canContinueToUse() {
         if (!farmer.level().isDay()) return false;
         if (farmer.isTooHungryToWork()) return false;
+        if (farmer.isTooUnhappyToWork()) return false;
         if (!(farmer.level() instanceof ServerLevel)) return false;
         if (farmer.getJob() != JobType.FARMER) return false;
         if (!hasHoeEquipped()) return false;

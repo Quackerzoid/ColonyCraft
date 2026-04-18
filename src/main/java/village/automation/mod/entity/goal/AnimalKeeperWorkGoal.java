@@ -86,6 +86,7 @@ public class AnimalKeeperWorkGoal extends Goal {
     public boolean canUse() {
         if (requestCooldown > 0) requestCooldown--;
         if (keeper.isTooHungryToWork())                        return false;
+        if (keeper.isTooUnhappyToWork())                       return false;
         if (!(keeper.level() instanceof ServerLevel level))    return false;
         if (keeper.getJob() != JobType.SHEPHERD)               return false;
         if (keeper.getWorkplacePos() == null)                  return false;
@@ -96,6 +97,7 @@ public class AnimalKeeperWorkGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         if (keeper.isTooHungryToWork())                        return false;
+        if (keeper.isTooUnhappyToWork())                       return false;
         if (!(keeper.level() instanceof ServerLevel))          return false;
         if (keeper.getJob() != JobType.SHEPHERD)               return false;
         if (keeper.getWorkplacePos() == null)                  return false;

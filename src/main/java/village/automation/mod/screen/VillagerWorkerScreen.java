@@ -19,19 +19,19 @@ import java.util.List;
  *
  * <p>Three-panel layout (left to right):
  * <pre>
- *   ┌─ Main (178) ─┐ ┌─ Entity (76) ─┐ ┌─ Stats (36) ─┐
- *   │ Tool / Equip │ │   3-D model   │ │  F  │  L      │
- *   │ ──────────── │ │               │ │ bar │ bar      │
- *   │  Inventory   │ │   Name / Job  │ │  F     L       │
- *   └──────────────┘ └───────────────┘ └─────────────── ┘
+ *   ┌─ Main (178) ─┐ ┌─ Entity (76) ─┐ ┌─ Stats (52) ─┐
+ *   │ Tool / Equip │ │   3-D model   │ │  F │  L │  H  │
+ *   │ ──────────── │ │               │ │ bar│ bar│ bar  │
+ *   │  Inventory   │ │   Name / Job  │ │  F    L    H   │
+ *   └──────────────┘ └───────────────┘ └────────────────┘
  * </pre>
  *
- * <p>The Stats panel contains two vertical bars:
+ * <p>The Stats panel contains three vertical bars:
  * <ul>
- *   <li>F — Food (green/amber/red like the original horizontal bar)
- *   <li>L — Level XP (blue fill; fills as the worker gains XP toward next level)
+ *   <li>F — Food (green/amber/red)
+ *   <li>L — Level XP (blue fill)
+ *   <li>H — Happiness (gold/green/amber/red)
  * </ul>
- * Labels "F" and "L" are centred below each bar.
  */
 public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorkerMenu> {
 
@@ -59,8 +59,8 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
     private static final int EP_W = 76;
     /** X of entity panel left edge (GUI-local). */
     private static final int EP_X = MAIN_W + PANEL_GAP;          // 180
-    /** Width of the stats panel. */
-    private static final int SP_W = 36;
+    /** Width of the stats panel (3 bars × 12 px + 4 gaps × 4 px = 52 px). */
+    private static final int SP_W = 52;
     /** X of stats panel left edge (GUI-local). */
     private static final int SP_X = EP_X + EP_W + PANEL_GAP;     // 258
 
@@ -84,7 +84,9 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
     private static final int SP_F_X        = 4;   // panel-local
     /** Local X of the Level (L) bar within the stats panel. */
     private static final int SP_L_X        = SP_F_X + SP_BAR_W + 4;    // 20
-    /** Y of the "F" / "L" letter labels (panel-local, i.e. from topPos). */
+    /** Local X of the Happiness (H) bar within the stats panel. */
+    private static final int SP_H_X        = SP_L_X + SP_BAR_W + 4;    // 36
+    /** Y of the bar letter labels (panel-local, i.e. from topPos). */
     private static final int SP_LABEL_Y    = MAIN_H - 13;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -152,7 +154,7 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
 
         // ── Food (F) bar ──────────────────────────────────────────────────────
         renderVerticalBar(g, sL + SP_F_X, y + SP_BAR_TOP, SP_BAR_W, SP_BAR_H,
-                this.menu.getFoodLevel(), VillagerWorkerEntity.MAX_FOOD, true);
+                this.menu.getFoodLevel(), VillagerWorkerEntity.MAX_FOOD, BarType.FOOD);
 
         // ── Level / XP (L) bar ────────────────────────────────────────────────
         int level         = this.menu.getLevel();
@@ -162,23 +164,18 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
         int fillXp    = (level >= VillagerWorkerEntity.MAX_LEVEL) ? xpForNext : xp;
         int maxXp     = (level >= VillagerWorkerEntity.MAX_LEVEL) ? 1         : xpForNext;
         renderVerticalBar(g, sL + SP_L_X, y + SP_BAR_TOP, SP_BAR_W, SP_BAR_H,
-                fillXp, maxXp, false);
+                fillXp, maxXp, BarType.XP);
+
+        // ── Happiness (H) bar ─────────────────────────────────────────────────
+        renderVerticalBar(g, sL + SP_H_X, y + SP_BAR_TOP, SP_BAR_W, SP_BAR_H,
+                this.menu.getHappiness(), VillagerWorkerEntity.MAX_HAPPINESS, BarType.HAPPINESS);
     }
 
-    /**
-     * Draws a single vertical bar (fills from bottom to top).
-     *
-     * @param x       absolute screen X of the bar's left edge
-     * @param y       absolute screen Y of the bar's top edge
-     * @param w       bar width in pixels
-     * @param h       bar height in pixels
-     * @param current current value
-     * @param max     maximum value
-     * @param isFood  {@code true} = food colours (green/amber/red);
-     *                {@code false} = XP colour (blue gradient)
-     */
+    private enum BarType { FOOD, XP, HAPPINESS }
+
+    /** Draws a single vertical bar that fills from bottom to top. */
     private static void renderVerticalBar(GuiGraphics g, int x, int y, int w, int h,
-                                          int current, int max, boolean isFood) {
+                                          int current, int max, BarType type) {
         // Sunken track
         g.fill(x,     y,     x + w,     y + h,     COL_SLOT_DK);
         g.fill(x + 1, y + 1, x + w - 1, y + h - 1, 0xFF1E1E1E);
@@ -188,19 +185,29 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
         int fillPx = Math.round((h - 2) * fraction);
         if (fillPx <= 0) return;
 
-        int fillColor;
-        if (isFood) {
-            if (fraction > 0.5f) {
-                fillColor = 0xFF44AA22;   // green  — well fed
-            } else if (current >= VillagerWorkerEntity.WORK_FOOD_THRESHOLD) {
-                fillColor = 0xFFFFAA00;   // amber  — hungry but working
-            } else {
-                fillColor = 0xFFCC2222;   // red    — too hungry to work
+        int fillColor = switch (type) {
+            case FOOD -> {
+                if (fraction > 0.5f)
+                    yield 0xFF44AA22;   // green  — well fed
+                else if (current >= VillagerWorkerEntity.WORK_FOOD_THRESHOLD)
+                    yield 0xFFFFAA00;   // amber  — hungry but working
+                else
+                    yield 0xFFCC2222;   // red    — too hungry to work
             }
-        } else {
-            // XP: darker blue at bottom, brighter blue toward the top
-            fillColor = 0xFF3399EE;
-        }
+            case XP -> 0xFF3399EE;      // blue
+            case HAPPINESS -> {
+                if (current > VillagerWorkerEntity.HAPPINESS_HIGH)
+                    yield 0xFFFFCC00;   // gold   — very happy
+                else if (current > VillagerWorkerEntity.HAPPINESS_NORMAL)
+                    yield 0xFF88CC22;   // yellow-green — content
+                else if (current >= VillagerWorkerEntity.HAPPINESS_LOW)
+                    yield 0xFFFF8800;   // orange — low
+                else if (current >= VillagerWorkerEntity.HAPPINESS_MISERABLE)
+                    yield 0xFFFF4400;   // red-orange — miserable
+                else
+                    yield 0xFFCC2222;   // red    — very miserable
+            }
+        };
 
         // Fill from the BOTTOM of the bar upward
         int fillBottom = y + h - 1;
@@ -244,15 +251,18 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
         g.drawString(this.font, badge, badgeX, MAIN_H - 13, 0xFFFFFF, false);
 
         // ── Stats panel labels ────────────────────────────────────────────────
-        // "F" centred under the food bar, "L" centred under the XP bar
         int fCentreX = SP_X + SP_F_X + SP_BAR_W / 2 - this.font.width("F") / 2;
         int lCentreX = SP_X + SP_L_X + SP_BAR_W / 2 - this.font.width("L") / 2;
+        int hCentreX = SP_X + SP_H_X + SP_BAR_W / 2 - this.font.width("H") / 2;
         g.drawString(this.font,
                 Component.literal("F").withStyle(ChatFormatting.GRAY),
                 fCentreX, SP_LABEL_Y, 0xAAAAAA, false);
         g.drawString(this.font,
                 Component.literal("L").withStyle(ChatFormatting.GRAY),
                 lCentreX, SP_LABEL_Y, 0xAAAAAA, false);
+        g.drawString(this.font,
+                Component.literal("H").withStyle(ChatFormatting.GRAY),
+                hCentreX, SP_LABEL_Y, 0xAAAAAA, false);
 
         // Level number above the L bar
         String lvlStr = String.valueOf(this.menu.getLevel());
@@ -328,6 +338,30 @@ public class VillagerWorkerScreen extends AbstractContainerScreen<VillagerWorker
                         .withStyle(ChatFormatting.GRAY));
             } else {
                 lines.add(Component.literal("Max level reached!").withStyle(ChatFormatting.GOLD));
+            }
+            g.renderComponentTooltip(this.font, lines, mx, my);
+        }
+
+        // Happiness bar tooltip
+        int hbL = sL + SP_H_X;
+        int hbR = hbL + SP_BAR_W;
+        if (mx >= hbL && mx < hbR && my >= sT && my < sB) {
+            int happiness = this.menu.getHappiness();
+            List<Component> lines = new ArrayList<>();
+            lines.add(Component.literal("Happiness: ")
+                    .append(Component.literal(happiness + " / " + VillagerWorkerEntity.MAX_HAPPINESS)
+                            .withStyle(ChatFormatting.WHITE))
+                    .withStyle(ChatFormatting.GRAY));
+            if (happiness > VillagerWorkerEntity.HAPPINESS_HIGH) {
+                lines.add(Component.literal("Very happy! (+20% speed)").withStyle(ChatFormatting.GOLD));
+            } else if (happiness > VillagerWorkerEntity.HAPPINESS_NORMAL) {
+                lines.add(Component.literal("Content").withStyle(ChatFormatting.GREEN));
+            } else if (happiness >= VillagerWorkerEntity.HAPPINESS_LOW) {
+                lines.add(Component.literal("Getting unhappy\u2026 (-25% speed)").withStyle(ChatFormatting.YELLOW));
+            } else if (happiness >= VillagerWorkerEntity.HAPPINESS_MISERABLE) {
+                lines.add(Component.literal("Refusing to work!").withStyle(ChatFormatting.RED));
+            } else {
+                lines.add(Component.literal("Miserable! (-50% speed)").withStyle(ChatFormatting.DARK_RED));
             }
             g.renderComponentTooltip(this.font, lines, mx, my);
         }
