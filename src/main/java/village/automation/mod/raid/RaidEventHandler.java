@@ -1,6 +1,7 @@
 package village.automation.mod.raid;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
@@ -22,9 +23,12 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import village.automation.mod.VillageMod;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.VillagerWorkerEntity;
+import net.minecraft.world.entity.animal.horse.AbstractChestedHorse;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -36,6 +40,11 @@ public final class RaidEventHandler {
 
     // Tracks how many ticks remain before a kidnapped worker is freed (keyed by raider UUID)
     private static final Map<UUID, Integer> kidnapTimers = new HashMap<>();
+
+    // Gearing-up state: mob UUID → ticks remaining
+    private static final Map<UUID, Integer> gearingUpMobs = new HashMap<>();
+    // Per-heart countdown: heart BlockPos → ticks until "ATTACK!" (300 = 15 s)
+    private static final Map<BlockPos, Integer> waveCountdown = new HashMap<>();
 
     // ── Ominous Bottle trigger ────────────────────────────────────────────────
 
@@ -97,21 +106,22 @@ public final class RaidEventHandler {
         if (!(event.getEntity().level() instanceof ServerLevel level)) return;
         Entity dead = event.getEntity();
 
-        // Track raid-mob deaths
+        // ── Raid-mob death ────────────────────────────────────────────────────
         if (dead.getPersistentData().getInt("ColonyCraftRaid") == 1) {
             VillageHeartBlockEntity be =
                     VillageHeartBlockEntity.findNearestWithin(level, dead.blockPosition(), 200);
             if (be != null && be.isRaidActive()) {
-                if (dead.getPersistentData().getInt("SupplyKeeper") == 1) {
+                boolean isSupply = dead.getPersistentData().getInt("SupplyKeeper") == 1;
+                boolean isDonkey = dead instanceof AbstractChestedHorse;
+
+                if (isSupply) {
                     RaidSpawnHelper.spawnSupplyKeeperLoot(level, dead.blockPosition());
-                }
-                be.decrementRaidMobsRemaining();
-                be.checkRetreatCondition(level);
-                if (be.getRaidMobsRemaining() == 0 && !be.isRaidRetreating()) {
-                    be.advanceWave(level);
+                    be.onSupplyKeeperKilled(level);
+                } else if (!isDonkey) {
+                    be.onCombatMobKilled(level);
                 }
             }
-            // Release any kidnapped worker riding this mob
+            // Release any kidnapped worker carried by this mob
             if (dead instanceof PathfinderMob mob) {
                 mob.getPassengers().stream()
                    .filter(p -> p instanceof VillagerWorkerEntity
@@ -121,18 +131,21 @@ public final class RaidEventHandler {
                        p.getPersistentData().remove("Kidnapped");
                    });
                 kidnapTimers.remove(dead.getUUID());
+                gearingUpMobs.remove(dead.getUUID());
             }
         }
 
-        // Track worker deaths that might trigger raider victory
+        // ── Worker death inside territory — morale rises for raiders ──────────
         if (dead instanceof VillagerWorkerEntity) {
             VillageHeartBlockEntity be =
                     VillageHeartBlockEntity.findNearestWithin(level, dead.blockPosition(), 200);
             if (be != null && be.isRaidActive()) {
                 BlockPos hp = be.getBlockPos();
                 double r    = be.getRadius();
-                if (hp.distSqr(dead.blockPosition()) <= r * r) {
-                    be.checkRaiderVictoryCondition(level);
+                // Skip if already counted as kidnapped (onWorkerLost was called at kidnap time)
+                if (hp.distSqr(dead.blockPosition()) <= r * r
+                        && !dead.getPersistentData().getBoolean("Kidnapped")) {
+                    be.onWorkerLost(level);
                 }
             }
         }
@@ -146,6 +159,7 @@ public final class RaidEventHandler {
         for (ServerLevel level : event.getServer().getAllLevels()) {
             tickRetreatingMobs(level);
             tickKidnapTimers(level);
+            tickGearingUpMobs(level);
         }
     }
 
@@ -222,6 +236,70 @@ public final class RaidEventHandler {
     /** Called from RaidSpawnHelper.attemptKidnap to start a 600-tick kidnap timer. */
     public static void startKidnapTimer(UUID raiderUUID) {
         kidnapTimers.put(raiderUUID, 600);
+    }
+
+    // ── Gearing-up system ─────────────────────────────────────────────────────
+
+    /** Called from RaidSpawnHelper after spawning a wave's combat mobs. */
+    public static void startGearingUp(List<UUID> mobs, VillageHeartBlockEntity be, ServerLevel level) {
+        BlockPos hp = be.getBlockPos().immutable();
+        for (UUID uuid : mobs) gearingUpMobs.put(uuid, 300);
+        waveCountdown.put(hp, 300);
+        be.setWaveGearingUp(true);
+        be.broadcastActionBar(level, "§6⚒ The raiders are gearing up...", 96);
+    }
+
+    /** Called from VillageHeartBlockEntity.endRaid to clean up any active gearing-up state. */
+    public static void clearGearingUp(VillageHeartBlockEntity be) {
+        waveCountdown.remove(be.getBlockPos().immutable());
+        for (UUID uuid : be.getRaidMobUUIDs()) gearingUpMobs.remove(uuid);
+    }
+
+    private static void tickGearingUpMobs(ServerLevel level) {
+        // Freeze individual mobs and emit particles while they gear up
+        Iterator<Map.Entry<UUID, Integer>> mobIt = gearingUpMobs.entrySet().iterator();
+        while (mobIt.hasNext()) {
+            Map.Entry<UUID, Integer> entry = mobIt.next();
+            Entity e = level.getEntity(entry.getKey());
+            if (e == null || !e.isAlive()) { mobIt.remove(); continue; }
+            if (!(e instanceof PathfinderMob mob)) { mobIt.remove(); continue; }
+
+            mob.getNavigation().stop();
+            mob.setTarget(null);
+
+            if (entry.getValue() % 20 == 0) {
+                level.sendParticles(net.minecraft.core.particles.ParticleTypes.LARGE_SMOKE,
+                        mob.getX(), mob.getY() + 1.0, mob.getZ(), 2, 0.4, 0.3, 0.4, 0.01);
+            }
+
+            int rem = entry.getValue() - 1;
+            if (rem <= 0) {
+                mobIt.remove();
+                mob.getPersistentData().remove("GearingUp");
+            } else {
+                entry.setValue(rem);
+            }
+        }
+
+        // Per-heart countdown — broadcast ATTACK! when it hits zero
+        Iterator<Map.Entry<BlockPos, Integer>> heartIt = waveCountdown.entrySet().iterator();
+        while (heartIt.hasNext()) {
+            Map.Entry<BlockPos, Integer> entry = heartIt.next();
+            int rem = entry.getValue() - 1;
+            if (rem <= 0) {
+                heartIt.remove();
+                if (level.getBlockEntity(entry.getKey()) instanceof VillageHeartBlockEntity be) {
+                    be.setWaveGearingUp(false);
+                    be.broadcastActionBar(level, "§c☠ ATTACK! ☠", 96);
+                    // If mobs died during gearing-up and already pushed morale to 0, trigger now
+                    if (be.isRaidActive() && !be.isRaidRetreating() && be.getRaidMorale() <= 0f) {
+                        be.adjustMorale(0f, level);
+                    }
+                }
+            } else {
+                entry.setValue(rem);
+            }
+        }
     }
 
     private RaidEventHandler() {}

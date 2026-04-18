@@ -28,8 +28,12 @@ import village.automation.mod.entity.CourierEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillageHeartMenu;
+import village.automation.mod.raid.RaidEventHandler;
 import village.automation.mod.raid.RaidLootTable;
 import village.automation.mod.raid.RaidSpawnHelper;
+
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.world.BossEvent;
 
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
@@ -115,14 +119,22 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     private boolean raidActive                  = false;
     private int     raidWave                    = 0;
     private int     raidMaxWaves                = 3;
-    private int     raidMobsRemaining           = 0;
-    private int     raidMobsSpawnedThisWave     = 0;
+    private int     raidCombatMobsThisWave      = 0;  // combat mobs spawned this wave (excl. supply/donkeys)
+    private int     raidCombatMobsKilled        = 0;  // how many killed so far this wave
     private int     raidWorkersAtStart          = 0;
+    private int     raidWorkersLost             = 0;  // deaths + kidnaps since raid start
+    private boolean supplyKeeperAlive           = false;
     private long    raidCooldownUntil           = 0L;
     private final List<UUID> raidMobUUIDs       = new ArrayList<>();
     private boolean raidRetreating              = false;
     private int     raidRetreatingTicksRemaining = 0;
     private RaidOutcome pendingOutcome          = RaidOutcome.NONE;
+    private float   raidMorale                  = 0.5f;
+    private boolean waveGearingUp               = false;
+
+    // Transient — recreated from raidMorale on first tick after load
+    private transient ServerBossEvent raidBossBar = null;
+    private int bossBarUpdateTimer = 0;
 
     // ContainerData: index 0 = storedWheat, 1 = workerCount, 2 = workerCap,
     //                index 3 = radius (derived, read-only setter),
@@ -236,6 +248,15 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         } else {
             be.scanForChests(serverLevel);
             be.chestScanCooldown = CHEST_SCAN_INTERVAL;
+        }
+
+        // ── Boss bar: lazy init + player list refresh ─────────────────────────
+        if (be.raidActive) {
+            if (be.raidBossBar == null) be.initRaidBar();
+            if (--be.bossBarUpdateTimer <= 0) {
+                be.updateBossBarPlayers(serverLevel);
+                be.bossBarUpdateTimer = 20;
+            }
         }
 
         // ── Raid retreat countdown ─────────────────────────────────────────────
@@ -565,7 +586,6 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
 
     public boolean isRaidActive()    { return raidActive; }
     public boolean isRaidRetreating(){ return raidRetreating; }
-    public int  getRaidMobsRemaining(){ return raidMobsRemaining; }
     public long getRaidCooldownUntil(){ return raidCooldownUntil; }
     public List<UUID> getRaidMobUUIDs(){ return raidMobUUIDs; }
 
@@ -574,25 +594,25 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         setChanged();
     }
 
-    public void decrementRaidMobsRemaining() {
-        raidMobsRemaining = Math.max(0, raidMobsRemaining - 1);
-        setChanged();
-    }
-
     public void startRaid(ServerLevel level) {
-        raidActive   = true;
-        raidWave     = 0;
+        raidActive             = true;
+        raidWave               = 0;
         raidMaxWaves = switch (appliedUpgrades) {
             case 1  -> 4;
             case 2  -> 5;
             case 3  -> 6;
             default -> 3;
         };
-        raidMobsRemaining       = 0;
-        raidMobsSpawnedThisWave = 0;
-        raidRetreating          = false;
-        pendingOutcome          = RaidOutcome.NONE;
-        raidWorkersAtStart      = countLiveWorkers(level);
+        raidCombatMobsThisWave = 0;
+        raidCombatMobsKilled   = 0;
+        raidWorkersAtStart     = countLiveWorkers(level);
+        raidWorkersLost        = 0;
+        supplyKeeperAlive      = true;
+        raidRetreating         = false;
+        pendingOutcome         = RaidOutcome.NONE;
+        raidMorale             = 0.5f;
+        waveGearingUp          = false;
+        initRaidBar();
         setChanged();
         advanceWave(level);
     }
@@ -600,14 +620,13 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     public void advanceWave(ServerLevel level) {
         raidWave++;
         if (raidWave > raidMaxWaves) {
-            endRaid(RaidOutcome.VICTORY, level);
+            triggerRetreat(RaidOutcome.VICTORY, level);
             return;
         }
-        int spawned = RaidSpawnHelper.spawnWave(this, level, raidWave);
-        raidMobsSpawnedThisWave = spawned;
-        raidMobsRemaining       = spawned;
+        refreshRaidBarTitle();
+        RaidSpawnHelper.spawnWave(this, level, raidWave);
         setChanged();
-        broadcastSubtitle(level, "§6Wave " + raidWave + " of " + raidMaxWaves, 96);
+        broadcastSubtitle(level, "§6Wave " + raidWave + " of " + raidMaxWaves + " — §eGearing Up!", 96);
     }
 
     public void endRaid(RaidOutcome outcome, ServerLevel level) {
@@ -642,35 +661,134 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
                  w.getPersistentData().remove("Kidnapped");
              });
 
+        RaidEventHandler.clearGearingUp(this);
+        destroyRaidBar();
         raidActive                   = false;
         raidWave                     = 0;
         raidRetreating               = false;
         pendingOutcome               = RaidOutcome.NONE;
-        raidMobsRemaining            = 0;
-        raidMobsSpawnedThisWave      = 0;
+        raidCombatMobsThisWave       = 0;
+        raidCombatMobsKilled         = 0;
+        raidWorkersLost              = 0;
+        supplyKeeperAlive            = false;
         raidRetreatingTicksRemaining = 0;
+        raidMorale                   = 0.5f;
+        waveGearingUp                = false;
         setChanged();
     }
 
-    public void checkRetreatCondition(ServerLevel level) {
+    public boolean isWaveGearingUp()            { return waveGearingUp; }
+    public void setWaveGearingUp(boolean v)     { waveGearingUp = v; setChanged(); }
+    public float getRaidMorale()                { return raidMorale; }
+
+    /**
+     * Shifts the morale bar by {@code delta}.
+     * At 0: advances to the next wave (or triggers victory retreat on the final wave).
+     * At 1: ends the raid in defeat.
+     */
+    public void adjustMorale(float delta, ServerLevel level) {
         if (!raidActive || raidRetreating) return;
-        if (raidMobsRemaining < raidMobsSpawnedThisWave * 0.40) {
-            triggerRetreat(RaidOutcome.VICTORY, level);
+        raidMorale = Math.max(0.0f, Math.min(1.0f, raidMorale + delta));
+        updateRaidBar(level);
+        setChanged();
+        if (raidMorale <= 0.0f && !waveGearingUp) {
+            if (raidWave < raidMaxWaves && supplyKeeperAlive) {
+                // Advance to the next wave and reset the bar to 50%
+                raidMorale           = 0.5f;
+                raidCombatMobsKilled = 0;
+                updateRaidBar(level);
+                advanceWave(level);
+            } else {
+                triggerRetreat(RaidOutcome.VICTORY, level);
+            }
+        } else if (raidMorale >= 1.0f) {
+            endRaid(RaidOutcome.DEFEAT, level);
         }
     }
 
-    public void checkRaiderVictoryCondition(ServerLevel level) {
+    /** Called by RaidSpawnHelper after spawning a wave's combat mobs. */
+    public void setCombatMobsThisWave(int n) {
+        raidCombatMobsThisWave = n;
+        raidCombatMobsKilled   = 0;
+        setChanged();
+    }
+
+    /** Called when a non-supply, non-donkey raider dies. Drains morale; forces to 0 at 75% kills. */
+    public void onCombatMobKilled(ServerLevel level) {
         if (!raidActive || raidRetreating) return;
-        int radius = getRadius();
+        raidCombatMobsKilled++;
+        setChanged();
+        if (raidCombatMobsThisWave > 0) {
+            float perKill = 0.5f / (raidCombatMobsThisWave * 0.75f);
+            adjustMorale(-perKill, level);
+            if (raidRetreating || !raidActive) return;
+        }
+        // Hard threshold: force morale to 0 at exactly 75% kills (guards against float drift)
+        if (raidCombatMobsKilled >= raidCombatMobsThisWave * 0.75f && raidMorale > 0f) {
+            adjustMorale(-1.0f, level);
+        }
+    }
+
+    /** Called when the supply keeper dies. No more waves will spawn; morale goes to 100% (defeat). */
+    public void onSupplyKeeperKilled(ServerLevel level) {
+        supplyKeeperAlive = false;
+        setChanged();
+        adjustMorale(1.0f, level);
+    }
+
+    /** Called when a worker dies inside territory or is successfully kidnapped. */
+    public void onWorkerLost(ServerLevel level) {
+        if (!raidActive) return;
+        raidWorkersLost++;
+        setChanged();
+        if (raidWorkersAtStart > 0) {
+            adjustMorale(2.0f / raidWorkersAtStart, level);
+        }
+    }
+
+    private void initRaidBar() {
+        raidBossBar = new ServerBossEvent(
+                Component.literal("§c⚔ §rRaiders' Morale  §7(Wave §f" + raidWave + "§7/§f" + raidMaxWaves + "§7)"),
+                BossEvent.BossBarColor.YELLOW,
+                BossEvent.BossBarOverlay.NOTCHED_10);
+        raidBossBar.setProgress(raidMorale);
+    }
+
+    private void updateRaidBar(ServerLevel level) {
+        if (raidBossBar == null) return;
+        raidBossBar.setProgress(raidMorale);
+        BossEvent.BossBarColor color;
+        if (raidMorale < 0.33f)      color = BossEvent.BossBarColor.GREEN;
+        else if (raidMorale < 0.66f) color = BossEvent.BossBarColor.YELLOW;
+        else                         color = BossEvent.BossBarColor.RED;
+        raidBossBar.setColor(color);
+    }
+
+    // Refreshes the title (called each time the wave number changes).
+    public void refreshRaidBarTitle() {
+        if (raidBossBar == null) return;
+        raidBossBar.setName(Component.literal(
+                "§c⚔ §rRaiders' Morale  §7(Wave §f" + raidWave + "§7/§f" + raidMaxWaves + "§7)"));
+    }
+
+    private void destroyRaidBar() {
+        if (raidBossBar != null) {
+            raidBossBar.removeAllPlayers();
+            raidBossBar = null;
+        }
+    }
+
+    private void updateBossBarPlayers(ServerLevel level) {
+        if (raidBossBar == null) return;
         BlockPos hp = getBlockPos();
-        double r2 = (double) radius * radius;
-        long alive = workerUUIDs.stream()
-                .map(level::getEntity)
-                .filter(e -> e instanceof VillagerWorkerEntity w && w.isAlive()
-                        && w.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) <= r2)
-                .count();
-        if ((double) alive <= raidWorkersAtStart * 0.40) {
-            triggerRetreat(RaidOutcome.DEFEAT, level);
+        double r2   = 96.0 * 96.0;
+        // Remove out-of-range players
+        for (ServerPlayer p : List.copyOf(raidBossBar.getPlayers())) {
+            if (p.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) > r2) raidBossBar.removePlayer(p);
+        }
+        // Add in-range players
+        for (ServerPlayer p : level.players()) {
+            if (p.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) <= r2) raidBossBar.addPlayer(p);
         }
     }
 
@@ -857,9 +975,11 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         tag.putBoolean("RaidActive",                  this.raidActive);
         tag.putInt("RaidWave",                        this.raidWave);
         tag.putInt("RaidMaxWaves",                    this.raidMaxWaves);
-        tag.putInt("RaidMobsRemaining",               this.raidMobsRemaining);
-        tag.putInt("RaidMobsSpawnedThisWave",         this.raidMobsSpawnedThisWave);
+        tag.putInt("RaidCombatMobsThisWave",          this.raidCombatMobsThisWave);
+        tag.putInt("RaidCombatMobsKilled",            this.raidCombatMobsKilled);
         tag.putInt("RaidWorkersAtStart",              this.raidWorkersAtStart);
+        tag.putInt("RaidWorkersLost",                 this.raidWorkersLost);
+        tag.putBoolean("SupplyKeeperAlive",           this.supplyKeeperAlive);
         tag.putLong("RaidCooldownUntil",              this.raidCooldownUntil);
         tag.putBoolean("RaidRetreating",              this.raidRetreating);
         tag.putInt("RaidRetreatingTicksRemaining",    this.raidRetreatingTicksRemaining);
@@ -871,6 +991,8 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             raidMobList.add(t);
         }
         tag.put("RaidMobUUIDs", raidMobList);
+        tag.putFloat("RaidMorale",      this.raidMorale);
+        tag.putBoolean("WaveGearingUp", this.waveGearingUp);
     }
 
     @Override
@@ -943,9 +1065,11 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         this.raidActive                   = tag.getBoolean("RaidActive");
         this.raidWave                     = tag.getInt("RaidWave");
         this.raidMaxWaves                 = tag.contains("RaidMaxWaves") ? tag.getInt("RaidMaxWaves") : 3;
-        this.raidMobsRemaining            = tag.getInt("RaidMobsRemaining");
-        this.raidMobsSpawnedThisWave      = tag.getInt("RaidMobsSpawnedThisWave");
+        this.raidCombatMobsThisWave       = tag.getInt("RaidCombatMobsThisWave");
+        this.raidCombatMobsKilled         = tag.getInt("RaidCombatMobsKilled");
         this.raidWorkersAtStart           = tag.getInt("RaidWorkersAtStart");
+        this.raidWorkersLost              = tag.getInt("RaidWorkersLost");
+        this.supplyKeeperAlive            = tag.getBoolean("SupplyKeeperAlive");
         this.raidCooldownUntil            = tag.getLong("RaidCooldownUntil");
         this.raidRetreating               = tag.getBoolean("RaidRetreating");
         this.raidRetreatingTicksRemaining = tag.getInt("RaidRetreatingTicksRemaining");
@@ -959,5 +1083,7 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         for (int i = 0; i < raidMobList.size(); i++) {
             this.raidMobUUIDs.add(raidMobList.getCompound(i).getUUID("UUID"));
         }
+        this.raidMorale    = tag.contains("RaidMorale")    ? tag.getFloat("RaidMorale")      : 0.5f;
+        // waveGearingUp is not restored on reload — mobs resume attacking immediately after restart
     }
 }

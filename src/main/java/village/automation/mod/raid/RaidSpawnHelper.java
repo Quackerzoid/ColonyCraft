@@ -39,143 +39,158 @@ import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.SoulIronGolemEntity;
 import village.automation.mod.entity.VillagerWorkerEntity;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.UUID;
 
 public final class RaidSpawnHelper {
 
     // ── Wave spawning ─────────────────────────────────────────────────────────
 
     /**
-     * Spawns the mobs for the given wave number, registers their UUIDs with the
-     * VillageHeartBlockEntity, and returns the total number of spawned mobs.
+     * Spawns supply units first (rear echelon), then clusters all combat mobs near the
+     * first supply keeper for the 15-second "Gearing Up" phase.
+     * Returns the total number of tracked mobs (supply + combat).
      */
-    public static int spawnWave(VillageHeartBlockEntity be, ServerLevel level, int wave) {
+    public static void spawnWave(VillageHeartBlockEntity be, ServerLevel level, int wave) {
         BlockPos hp = be.getBlockPos();
-        int spawned = 0;
+
+        // ── Supply unit: reuse the existing keeper on waves 2+; spawn fresh on wave 1 ──
+        BlockPos rally = null;
+        for (UUID uuid : be.getRaidMobUUIDs()) {
+            Entity e = level.getEntity(uuid);
+            if (e instanceof PathfinderMob mob && mob.isAlive()
+                    && mob.getPersistentData().getInt("SupplyKeeper") == 1) {
+                rally = mob.blockPosition();
+                break;
+            }
+        }
+        if (rally == null) {
+            // Wave 1 (or fallback): spawn one supply keeper + 2 donkeys
+            BlockPos sPos = getSpawnPos(level, hp, 70, 80);
+            Pillager keeper = spawnSupplyUnitAt(level, sPos);
+            be.addRaidMob(keeper.getUUID());
+            for (int d = 0; d < 2; d++) {
+                BlockPos dPos = getSpawnPosNear(level, sPos, 6);
+                Donkey donkey = new Donkey(EntityType.DONKEY, level);
+                placeAndTag(donkey, dPos, level);
+                donkey.setChest(true);
+                populateDonkeyChest(donkey, level);
+                donkey.restrictTo(sPos, 8);
+                be.addRaidMob(donkey.getUUID());
+            }
+            rally = sPos;
+        }
+
+        // ── Combat mobs — gather near the supply keeper ───────────────────────
+        List<UUID> combatUUIDs = new ArrayList<>();
 
         switch (wave) {
             case 1 -> {
-                spawned += spawnGroup(be, level, hp, EntityType.PILLAGER, 4);
-                spawned += spawnGroup(be, level, hp, EntityType.VINDICATOR, 2);
-                spawned += spawnCaptain(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
+                spawnGroupNear(be, level, rally, hp, EntityType.PILLAGER,   4, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.VINDICATOR, 2, combatUUIDs);
+                spawnCaptainNear(be, level, rally, hp, combatUUIDs);
             }
             case 2 -> {
-                spawned += spawnGroup(be, level, hp, EntityType.PILLAGER, 5);
-                spawned += spawnMountedPillagerGroup(be, level, hp, 3);
-                spawned += spawnGroup(be, level, hp, EntityType.VINDICATOR, 2);
-                spawned += spawnCaptain(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
+                spawnGroupNear(be, level, rally, hp, EntityType.PILLAGER,   5, combatUUIDs);
+                spawnMountedNear(be, level, rally, hp, 3, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.VINDICATOR, 2, combatUUIDs);
+                spawnCaptainNear(be, level, rally, hp, combatUUIDs);
             }
             case 3 -> {
-                spawned += spawnGroup(be, level, hp, EntityType.PILLAGER, 6);
-                spawned += spawnMountedPillagerGroup(be, level, hp, 3);
-                spawned += spawnGroup(be, level, hp, EntityType.VINDICATOR, 2);
-                spawned += spawnGroup(be, level, hp, EntityType.EVOKER, 1);
-                spawned += spawnCaptain(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
+                spawnGroupNear(be, level, rally, hp, EntityType.PILLAGER,   6, combatUUIDs);
+                spawnMountedNear(be, level, rally, hp, 3, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.VINDICATOR, 2, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.EVOKER,     1, combatUUIDs);
+                spawnCaptainNear(be, level, rally, hp, combatUUIDs);
             }
             case 4 -> {
-                spawned += spawnGroup(be, level, hp, EntityType.PILLAGER, 8);
-                spawned += spawnMountedPillagerGroup(be, level, hp, 4);
-                spawned += spawnGroup(be, level, hp, EntityType.EVOKER, 2);
-                spawned += spawnCaptain(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
+                spawnGroupNear(be, level, rally, hp, EntityType.PILLAGER,   8, combatUUIDs);
+                spawnMountedNear(be, level, rally, hp, 4, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.EVOKER,     2, combatUUIDs);
+                spawnCaptainNear(be, level, rally, hp, combatUUIDs);
             }
             case 5 -> {
-                spawned += spawnGroup(be, level, hp, EntityType.PILLAGER, 8);
-                spawned += spawnMountedPillagerGroup(be, level, hp, 4);
-                spawned += spawnGroup(be, level, hp, EntityType.WITCH, 3);
-                spawned += spawnGroup(be, level, hp, EntityType.EVOKER, 2);
-                spawned += spawnCaptain(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
+                spawnGroupNear(be, level, rally, hp, EntityType.PILLAGER,   8, combatUUIDs);
+                spawnMountedNear(be, level, rally, hp, 4, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.WITCH,      3, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.EVOKER,     2, combatUUIDs);
+                spawnCaptainNear(be, level, rally, hp, combatUUIDs);
             }
             case 6 -> {
-                spawned += spawnGroup(be, level, hp, EntityType.PILLAGER, 12);
-                spawned += spawnMountedPillagerGroup(be, level, hp, 6);
-                spawned += spawnGroup(be, level, hp, EntityType.WITCH, 4);
-                spawned += spawnGroup(be, level, hp, EntityType.EVOKER, 3);
-                spawned += spawnWitchOnVindicator(be, level, hp);
-                spawned += spawnCaptain(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
-                spawned += spawnSupplyUnit(be, level, hp);
+                spawnGroupNear(be, level, rally, hp, EntityType.PILLAGER,   12, combatUUIDs);
+                spawnMountedNear(be, level, rally, hp, 6, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.WITCH,       4, combatUUIDs);
+                spawnGroupNear(be, level, rally, hp, EntityType.EVOKER,      3, combatUUIDs);
+                spawnWitchOnVindicatorNear(be, level, rally, hp, combatUUIDs);
+                spawnCaptainNear(be, level, rally, hp, combatUUIDs);
             }
             default -> {}
         }
-        return spawned;
+
+        // Register combat count and start gearing-up (freezes mobs for 15 s)
+        be.setCombatMobsThisWave(combatUUIDs.size());
+        if (!combatUUIDs.isEmpty()) {
+            RaidEventHandler.startGearingUp(combatUUIDs, be, level);
+        }
     }
 
-    // ── Group helpers ─────────────────────────────────────────────────────────
+    // ── Group helpers (rally-point variants) ─────────────────────────────────
 
-    private static <T extends PathfinderMob> int spawnGroup(
+    private static <T extends PathfinderMob> void spawnGroupNear(
             VillageHeartBlockEntity be, ServerLevel level,
-            BlockPos heartPos, EntityType<T> type, int count) {
+            BlockPos rally, BlockPos heartPos,
+            EntityType<T> type, int count, List<UUID> gearList) {
         for (int i = 0; i < count; i++) {
-            BlockPos pos  = getSpawnPos(level, heartPos, 48, 80);
-            T mob         = type.create(level);
+            BlockPos pos = getSpawnPosNear(level, rally, 12);
+            T mob        = type.create(level);
             if (mob == null) continue;
             placeAndTag(mob, pos, level);
-            addRaiderAI(mob, heartPos);
+            addRaiderAI(mob, heartPos);   // also sets GearingUp tag
             be.addRaidMob(mob.getUUID());
+            gearList.add(mob.getUUID());
         }
-        return count;
     }
 
-    private static int spawnMountedPillagerGroup(
-            VillageHeartBlockEntity be, ServerLevel level, BlockPos heartPos, int count) {
+    private static void spawnMountedNear(
+            VillageHeartBlockEntity be, ServerLevel level,
+            BlockPos rally, BlockPos heartPos, int count, List<UUID> gearList) {
         for (int i = 0; i < count; i++) {
-            BlockPos pos    = getSpawnPos(level, heartPos, 48, 80);
-            Pillager rider  = spawnMountedPillager(level, pos);
+            BlockPos pos   = getSpawnPosNear(level, rally, 12);
+            Pillager rider = spawnMountedPillager(level, pos);
             addRaiderAI(rider, heartPos);
             be.addRaidMob(rider.getUUID());
+            gearList.add(rider.getUUID());
         }
-        return count;
     }
 
-    private static int spawnCaptain(VillageHeartBlockEntity be, ServerLevel level, BlockPos heartPos) {
-        BlockPos pos  = getSpawnPos(level, heartPos, 48, 80);
+    private static void spawnCaptainNear(
+            VillageHeartBlockEntity be, ServerLevel level,
+            BlockPos rally, BlockPos heartPos, List<UUID> gearList) {
+        BlockPos pos  = getSpawnPosNear(level, rally, 12);
         Pillager cap  = spawnRaidCaptain(level, pos);
         addRaiderAI(cap, heartPos);
         be.addRaidMob(cap.getUUID());
-        return 1;
+        gearList.add(cap.getUUID());
     }
 
-    private static int spawnSupplyUnit(VillageHeartBlockEntity be, ServerLevel level, BlockPos heartPos) {
-        // Supply units spawn 70–80 blocks from heart (rear echelon)
-        BlockPos pos          = getSpawnPos(level, heartPos, 70, 80);
-        Pillager supplyKeeper = spawnSupplyUnitAt(level, pos);
-        be.addRaidMob(supplyKeeper.getUUID());
-        // Two donkeys near supply keeper
-        for (int i = 0; i < 2; i++) {
-            BlockPos dpos  = getSpawnPos(level, pos, 2, 6);
-            Donkey donkey  = new Donkey(EntityType.DONKEY, level);
-            placeAndTag(donkey, dpos, level);
-            donkey.setChest(true);
-            populateDonkeyChest(donkey, level);
-            donkey.restrictTo(pos, 8);
-            be.addRaidMob(donkey.getUUID());
-        }
-        return 3; // keeper + 2 donkeys
-    }
-
-    private static int spawnWitchOnVindicator(VillageHeartBlockEntity be, ServerLevel level, BlockPos heartPos) {
-        BlockPos pos        = getSpawnPos(level, heartPos, 48, 80);
-        Vindicator mount    = new Vindicator(EntityType.VINDICATOR, level);
+    private static void spawnWitchOnVindicatorNear(
+            VillageHeartBlockEntity be, ServerLevel level,
+            BlockPos rally, BlockPos heartPos, List<UUID> gearList) {
+        BlockPos pos     = getSpawnPosNear(level, rally, 12);
+        Vindicator mount = new Vindicator(EntityType.VINDICATOR, level);
         placeAndTag(mount, pos, level);
         addRaiderAI(mount, heartPos);
-        Witch rider         = new Witch(EntityType.WITCH, level);
+        Witch rider = new Witch(EntityType.WITCH, level);
         placeAndTag(rider, pos, level);
         addRaiderAI(rider, heartPos);
         rider.startRiding(mount, true);
-        // Track the witch; the vindicator dies when the witch despawns (it is discarded by endRaid)
         be.addRaidMob(rider.getUUID());
         be.addRaidMob(mount.getUUID());
-        return 2;
+        gearList.add(rider.getUUID());
+        gearList.add(mount.getUUID());
     }
 
     // ── Named spawn helpers ───────────────────────────────────────────────────
@@ -275,6 +290,7 @@ public final class RaidSpawnHelper {
         target.startRiding(raider, true);
         target.getPersistentData().putBoolean("Kidnapped", true);
         RaidEventHandler.startKidnapTimer(raider.getUUID());
+        be.onWorkerLost(level); // count the kidnap as a permanent loss immediately
 
         // Carrying a villager slows the raider by 50%
         var speedAttr = raider.getAttribute(Attributes.MOVEMENT_SPEED);
@@ -289,6 +305,9 @@ public final class RaidSpawnHelper {
 
     @SuppressWarnings("unchecked")
     private static void addRaiderAI(PathfinderMob mob, BlockPos heartPos) {
+        // Mark as gearing up — cleared by RaidEventHandler after 15 s
+        mob.getPersistentData().putBoolean("GearingUp", true);
+
         // Target priority: Golem > Worker > Player
         mob.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(mob, SoulIronGolemEntity.class, false));
         mob.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(mob, VillagerWorkerEntity.class, false));
@@ -299,11 +318,21 @@ public final class RaidSpawnHelper {
             mob.goalSelector.addGoal(1, new MeleeAttackGoal(mob, 1.0, true));
         }
 
-        // Walk toward heart when no target
+        // Walk toward heart when no target (blocked during GearingUp and Retreating)
         mob.goalSelector.addGoal(5, new MoveToBlockPosGoal(mob, heartPos));
     }
 
     // ── Shared utilities ──────────────────────────────────────────────────────
+
+    /** Picks a random surface BlockPos within maxDist blocks of origin (used for clustering). */
+    public static BlockPos getSpawnPosNear(ServerLevel level, BlockPos origin, int maxDist) {
+        var rng   = level.getRandom();
+        double ang = rng.nextDouble() * 2 * Math.PI;
+        double d   = rng.nextDouble() * maxDist;
+        int tx = (int)(origin.getX() + Math.cos(ang) * d);
+        int tz = (int)(origin.getZ() + Math.sin(ang) * d);
+        return level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, new BlockPos(tx, 0, tz));
+    }
 
     /** Picks a random surface BlockPos on the perimeter, minDist–maxDist from origin. */
     public static BlockPos getSpawnPos(ServerLevel level, BlockPos origin, int minDist, int maxDist) {
@@ -387,8 +416,9 @@ public final class RaidSpawnHelper {
         }
 
         @Override public boolean canUse() {
-            // Do not compete with the retreat navigation
+            // Blocked while gearing up or retreating so those systems own navigation
             return mob.getTarget() == null
+                    && !mob.getPersistentData().getBoolean("GearingUp")
                     && !mob.getPersistentData().getBoolean("Retreating")
                     && !mob.getNavigation().isInProgress();
         }

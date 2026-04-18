@@ -52,6 +52,8 @@ add raid item thats used to enchant stuff
 add village totem
 
 
+
+
 =========================== MISC ======================================
 proper heart gui (Somewhat Implemented)
 @ tool levels (Somewhat Implemented)
@@ -62,7 +64,9 @@ proper heart gui (Somewhat Implemented)
 ============================ KNOWN BUGS/ISSUES =====================================
 
 Village Bees continue entering a Village beehive even after it has been destroyed
-
+Raiders Shouldnt target kidnapped villagers
+Raiders can wait just outside the border and shoot golems that cant reach them
+Iron Soul Golem crafting only uses one iron block beneath it, instead of the 4 in a T shape
 
 ====Potentially Fixed=====
 
