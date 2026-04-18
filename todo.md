@@ -1,6 +1,8 @@
 
 =========================== VILLAGERS ===========================
+
 villager happiness system
+villager age?
 CUSTOM WANDERING MERCHANT!!!!! (uses the shopkeeper (sells excess for emeralds) or player (you can buy animals))
 merchants wants and rates in his inventory changes based on what youve already sold - making diversity better
 SHOPKEEPER!!!!! (they sit at their block and you designate what you want them to sell of your resources)
@@ -23,6 +25,7 @@ miner
 lumberjack
 fisherman
 smelter
+farmer
 
 - Skill curve todo:
 butcher
@@ -53,12 +56,18 @@ proper heart gui :
 @ preferred food source
 
 
-============================ KNOWN BUGS =====================================
-make villagers persistent!!!!!
+============================ KNOWN BUGS/ISSUES =====================================
+SLOW VILLAGER WALK SPEED!!!!!!!!!!
+!!!!!!!make villagers persistent!!!!!
 make animals teleport back when they get too far
 make animalkeeper pick up eggs
-bees do not go into beekeeper block
-bees do not spin or go close enough to the farmland
 when you give animalkeeper items like wheat, seeds they disappear but he still uses them
 Iron Soul Golems name is the wrong way round
 Iron Soul Golems can be made outside a village heart's radius
+smith, smelter will starve
+smelter should prioritise coal
+2 progress bars in smiths gui
+no progress bar in smelter gui
+lumberjacks can mine the same tree
+lumberjacks need to break leaf blocks that obstruct their path
+chef should prioritise higher value foods
