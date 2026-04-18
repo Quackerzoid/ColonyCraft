@@ -1,6 +1,8 @@
 package village.automation.mod.entity.goal;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -173,8 +175,18 @@ public class FarmerWorkGoal extends Goal {
 
             case HARVEST -> {
                 if (distSq < REACH_SQ) {
-                    // Accumulate swings; act only once the required count is reached
-                    if (!tickSwing() || swingCounter < farmer.getWorkSwings()) return;
+                    lookAt(targetPos);
+                    if (tickSwing()) {
+                        BlockState swingState = level.getBlockState(targetPos);
+                        spawnBlockParticles(level, targetPos, swingState, 3);
+                        SoundType swingSound = swingState.getSoundType();
+                        level.playSound(null,
+                                targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5,
+                                swingSound.getHitSound(), SoundSource.BLOCKS,
+                                swingSound.getVolume() * 0.4f,
+                                swingSound.getPitch() * 0.9f + farmer.getRandom().nextFloat() * 0.2f);
+                    }
+                    if (swingCounter < farmer.getWorkSwings()) return;
                     resetSwing();
 
                     BlockPos retillPos = harvestCrop(level, targetPos);
@@ -205,7 +217,18 @@ public class FarmerWorkGoal extends Goal {
 
             case RETILL -> {
                 if (distSq < REACH_SQ) {
-                    if (!tickSwing() || swingCounter < farmer.getWorkSwings()) return;
+                    lookAt(targetPos);
+                    if (tickSwing()) {
+                        BlockState swingState = level.getBlockState(targetPos);
+                        spawnBlockParticles(level, targetPos, swingState, 3);
+                        SoundType swingSound = swingState.getSoundType();
+                        level.playSound(null,
+                                targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5,
+                                swingSound.getHitSound(), SoundSource.BLOCKS,
+                                swingSound.getVolume() * 0.4f,
+                                swingSound.getPitch() * 0.9f + farmer.getRandom().nextFloat() * 0.2f);
+                    }
+                    if (swingCounter < farmer.getWorkSwings()) return;
                     resetSwing();
 
                     BlockState cur = level.getBlockState(targetPos);
@@ -263,7 +286,18 @@ public class FarmerWorkGoal extends Goal {
 
             case PLANT -> {
                 if (distSq < REACH_SQ) {
-                    if (!tickSwing() || swingCounter < farmer.getWorkSwings()) return;
+                    lookAt(targetPos);
+                    if (tickSwing()) {
+                        BlockState swingState = level.getBlockState(targetPos);
+                        spawnBlockParticles(level, targetPos, swingState, 2);
+                        SoundType swingSound = swingState.getSoundType();
+                        level.playSound(null,
+                                targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5,
+                                swingSound.getHitSound(), SoundSource.BLOCKS,
+                                swingSound.getVolume() * 0.3f,
+                                swingSound.getPitch() * 0.9f + farmer.getRandom().nextFloat() * 0.2f);
+                    }
+                    if (swingCounter < farmer.getWorkSwings()) return;
                     resetSwing();
 
                     plantSeed(level, targetPos);
@@ -339,6 +373,20 @@ public class FarmerWorkGoal extends Goal {
         BlockPos heartPos = wbe.getLinkedHeartPos();
         if (heartPos == null) return null;
         return level.getBlockEntity(heartPos) instanceof VillageHeartBlockEntity h ? h : null;
+    }
+
+    // ── Look & particles ──────────────────────────────────────────────────────
+
+    private void lookAt(BlockPos pos) {
+        farmer.getLookControl().setLookAt(
+                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 30f, 30f);
+    }
+
+    private static void spawnBlockParticles(ServerLevel level, BlockPos pos, BlockState state, int count) {
+        level.sendParticles(
+                new BlockParticleOption(ParticleTypes.BLOCK, state),
+                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
+                count, 0.3, 0.2, 0.3, 0.05);
     }
 
     // ── Navigation ────────────────────────────────────────────────────────────

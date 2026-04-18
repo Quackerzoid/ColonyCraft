@@ -30,7 +30,8 @@
       "Bash(cd /tmp)",
       "Bash(jar xf *)",
       "Bash(del \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\java\\\\village\\\\automation\\\\mod\\\\client\\\\renderer\\\\layer\\\\SmithProfessionLayer.java\")",
-      "Bash(grep -E '\\\\.java$|^d')"
+      "Bash(grep -E '\\\\.java$|^d')",
+      "Bash(./gradlew compileJava)"
     ]
   }
 }
