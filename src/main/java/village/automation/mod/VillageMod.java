@@ -653,11 +653,13 @@ public class VillageMod {
         }
 
         // Soul pumpkin placed on top of a copper block → spawn courier
+        // Soul pumpkin placed on top of an iron block → spawn Iron Soul Golem
         if (event.getState().is(SOUL_PUMPKIN.get())) {
-            BlockPos copperPos = pos.below();
-            if (serverLevel.getBlockState(copperPos).is(Blocks.COPPER_BLOCK)) {
+            BlockPos below = pos.below();
+
+            if (serverLevel.getBlockState(below).is(Blocks.COPPER_BLOCK)) {
                 Optional<BlockPos> heartPosOpt =
-                        VillageHeartBlockEntity.findClaimingHeart(serverLevel, copperPos, null);
+                        VillageHeartBlockEntity.findClaimingHeart(serverLevel, below, null);
                 if (heartPosOpt.isEmpty()) {
                     event.setCanceled(true);
                     if (event.getEntity() instanceof Player player) {
@@ -670,11 +672,11 @@ public class VillageMod {
                     return;
                 }
                 serverLevel.removeBlock(pos, false);
-                serverLevel.removeBlock(copperPos, false);
+                serverLevel.removeBlock(below, false);
                 CourierEntity courier = new CourierEntity(COURIER.get(), serverLevel);
-                courier.moveTo(copperPos.getX() + 0.5, copperPos.getY() + 0.5,
-                        copperPos.getZ() + 0.5, serverLevel.getRandom().nextFloat() * 360f, 0f);
-                courier.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(copperPos),
+                courier.moveTo(below.getX() + 0.5, below.getY() + 0.5,
+                        below.getZ() + 0.5, serverLevel.getRandom().nextFloat() * 360f, 0f);
+                courier.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(below),
                         MobSpawnType.MOB_SUMMONED, null);
                 BlockPos heartPos = heartPosOpt.get();
                 courier.setLinkedHeartPos(heartPos);
@@ -684,6 +686,34 @@ public class VillageMod {
                 if (heartBe instanceof VillageHeartBlockEntity heartBE) {
                     heartBE.registerCourier(courier.getUUID());
                 }
+                event.setCanceled(true);
+
+            } else if (serverLevel.getBlockState(below).is(Blocks.IRON_BLOCK)) {
+                Optional<BlockPos> heartPosOpt =
+                        VillageHeartBlockEntity.findClaimingHeart(serverLevel, below, null);
+                if (heartPosOpt.isEmpty()) {
+                    event.setCanceled(true);
+                    if (event.getEntity() instanceof Player player) {
+                        player.displayClientMessage(
+                                net.minecraft.network.chat.Component
+                                        .literal("Must be within a Village Heart's territory!")
+                                        .withStyle(ChatFormatting.RED),
+                                true);
+                    }
+                    return;
+                }
+                serverLevel.removeBlock(pos, false);
+                serverLevel.removeBlock(below, false);
+                village.automation.mod.entity.SoulIronGolemEntity golem =
+                        new village.automation.mod.entity.SoulIronGolemEntity(
+                                SOUL_IRON_GOLEM.get(), serverLevel);
+                golem.moveTo(below.getX() + 0.5, below.getY(),
+                        below.getZ() + 0.5, serverLevel.getRandom().nextFloat() * 360f, 0f);
+                golem.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(below),
+                        MobSpawnType.MOB_SUMMONED, null);
+                BlockPos heartPos = heartPosOpt.get();
+                golem.linkToHeart(heartPos);
+                serverLevel.addFreshEntity(golem);
                 event.setCanceled(true);
             }
         }

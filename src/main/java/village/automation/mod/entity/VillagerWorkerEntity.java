@@ -244,7 +244,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public static AttributeSupplier.Builder createAttributes() {
         return AbstractVillager.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
-                .add(Attributes.MOVEMENT_SPEED, 0.5)
+                .add(Attributes.MOVEMENT_SPEED, 0.25)
                 .add(Attributes.FOLLOW_RANGE, 48.0);
     }
 
@@ -265,7 +265,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.goalSelector.addGoal(2, new AnimalKeeperWorkGoal(this));
         this.goalSelector.addGoal(2, new BeekeeperWorkGoal(this));
         this.goalSelector.addGoal(2, new ButcherWorkGoal(this));
-        this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.6));
+        this.goalSelector.addGoal(3, new RandomStrollGoal(this, 0.3));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
     }

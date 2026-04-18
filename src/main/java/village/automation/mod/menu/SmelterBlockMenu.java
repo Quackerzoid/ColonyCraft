@@ -50,6 +50,7 @@ public class SmelterBlockMenu extends AbstractContainerMenu {
     @Nullable private final SmelterBlockEntity blockEntity;
     private final String  workerName;
     private final JobType workerJob;
+    private final net.minecraft.world.inventory.ContainerData smeltSyncData;
 
     // ── Server-side constructor ───────────────────────────────────────────────
 
@@ -70,6 +71,9 @@ public class SmelterBlockMenu extends AbstractContainerMenu {
         this.workerName = name;
         this.workerJob  = job;
 
+        this.smeltSyncData = be.smeltData;
+        addDataSlots(this.smeltSyncData);
+
         Level level = playerInventory.player.level();
         addBlockSlots(be, level);
         addPlayerInventory(playerInventory);
@@ -89,6 +93,11 @@ public class SmelterBlockMenu extends AbstractContainerMenu {
 
         BlockEntity be = playerInventory.player.level().getBlockEntity(pos);
         this.blockEntity = be instanceof SmelterBlockEntity sbe ? sbe : null;
+
+        this.smeltSyncData = (this.blockEntity != null)
+                ? this.blockEntity.smeltData
+                : new net.minecraft.world.inventory.SimpleContainerData(2);
+        addDataSlots(this.smeltSyncData);
 
         Level level = playerInventory.player.level();
         if (this.blockEntity != null) {
@@ -219,6 +228,17 @@ public class SmelterBlockMenu extends AbstractContainerMenu {
     public String  getWorkerName() { return workerName; }
     public JobType getWorkerJob()  { return workerJob;  }
     public boolean hasWorker()     { return !workerName.isEmpty(); }
+
+    /** True while a smelt timer is counting down. */
+    public boolean isSmelting() { return smeltSyncData.get(0) > 0; }
+
+    /** 0.0 = just started, 1.0 = almost done. */
+    public float getSmeltProgress() {
+        int remaining = smeltSyncData.get(0);
+        int max       = smeltSyncData.get(1);
+        if (max <= 0 || remaining <= 0) return 0f;
+        return 1.0f - (float) remaining / max;
+    }
 
     @Nullable
     public SmelterBlockEntity getBlockEntity() { return blockEntity; }

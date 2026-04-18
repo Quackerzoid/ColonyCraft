@@ -46,6 +46,10 @@ public class SmelterBlockScreen extends AbstractContainerScreen<SmelterBlockMenu
     private static final int COL_SLOT_DK   = 0xFF373737;
     private static final int COL_SLOT_LT   = 0xFF8B8B8B;
 
+    // Progress arrow colours
+    private static final int COL_BAR_BG    = 0xFF1A1A1A;
+    private static final int COL_BAR_FG    = 0xFFFF8C00;  // orange, matches fire
+
     // Fire icon colours
     private static final int COL_FIRE_BG   = 0xFF2A1000;
     private static final int COL_FIRE_LO   = 0xFF7A2800;
@@ -102,8 +106,8 @@ public class SmelterBlockScreen extends AbstractContainerScreen<SmelterBlockMenu
         //    Stylised flame built from layered filled rectangles.
         drawFire(g, x + 57, y + 52);
 
-        // ── Arrow (from input area to output slot, x=79 y=46) ────────────────
-        drawArrow(g, x + 79, y + 46);
+        // ── Arrow (progress indicator, fills left→right as smelting progresses) ─
+        drawArrow(g, x + 79, y + 46, menu.isSmelting() ? menu.getSmeltProgress() : 0f);
     }
 
     /**
@@ -127,17 +131,21 @@ public class SmelterBlockScreen extends AbstractContainerScreen<SmelterBlockMenu
     }
 
     /**
-     * Draws a right-pointing arrow at ({@code ax}, {@code ay}).
-     * Shaft is 22 px wide, overall height 13 px.
+     * Draws a right-pointing arrow at ({@code ax}, {@code ay}) with a progress fill.
+     * Shaft is 20 px; arrowhead adds another 13 px. {@code progress} 0→1 fills the shaft.
      */
-    private static void drawArrow(GuiGraphics g, int ax, int ay) {
-        // Horizontal shaft (4 px tall, centered at ay+6)
-        g.fill(ax,      ay + 4, ax + 20, ay + 9, COL_DIVIDER);
-        // Arrow head — three stepped layers widening toward the tip
-        g.fill(ax + 18, ay + 2, ax + 22, ay + 11, COL_DIVIDER); // wide
-        g.fill(ax + 22, ay + 3, ax + 26, ay + 10, COL_DIVIDER); // medium
-        g.fill(ax + 26, ay + 4, ax + 30, ay + 9,  COL_DIVIDER); // narrow
-        g.fill(ax + 30, ay + 5, ax + 33, ay + 8,  COL_DIVIDER); // tip
+    private static void drawArrow(GuiGraphics g, int ax, int ay, float progress) {
+        // Dark backgrounds
+        g.fill(ax,      ay + 4, ax + 20, ay + 9,  COL_BAR_BG);
+        g.fill(ax + 18, ay + 2, ax + 22, ay + 11, COL_BAR_BG);
+        g.fill(ax + 22, ay + 3, ax + 26, ay + 10, COL_BAR_BG);
+        g.fill(ax + 26, ay + 4, ax + 30, ay + 9,  COL_BAR_BG);
+        g.fill(ax + 30, ay + 5, ax + 33, ay + 8,  COL_BAR_BG);
+        // Orange fill on the shaft based on progress
+        int fillW = (int) (20 * progress);
+        if (fillW > 0) {
+            g.fill(ax, ay + 4, ax + fillW, ay + 9, COL_BAR_FG);
+        }
     }
 
     // ── Labels ────────────────────────────────────────────────────────────────

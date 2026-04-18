@@ -65,6 +65,7 @@ public class SmelterWorkGoal extends Goal {
     private final VillagerWorkerEntity smelter;
     private int state            = STATE_IDLE;
     private int smeltTimer       = 0;
+    private int maxSmeltTimer    = 1200;
     private int particleCooldown = 0;
     private int idleCheckTimer   = 0;
 
@@ -79,6 +80,7 @@ public class SmelterWorkGoal extends Goal {
     public boolean canUse() {
         return smelter.getJob() == JobType.SMELTER
                 && smelter.getWorkplacePos() != null
+                && !smelter.isTooHungryToWork()
                 && smelter.level() instanceof ServerLevel;
     }
 
@@ -114,6 +116,11 @@ public class SmelterWorkGoal extends Goal {
             case STATE_IDLE     -> tickIdle(level);
             case STATE_SMELTING -> tickSmelting(level);
             case STATE_READY    -> tickReady(level);
+        }
+
+        SmelterBlockEntity syncBe = getSmelterBE(level);
+        if (syncBe != null) {
+            syncBe.setSmeltState(state == STATE_SMELTING ? smeltTimer : 0, maxSmeltTimer);
         }
     }
 
@@ -154,6 +161,7 @@ public class SmelterWorkGoal extends Goal {
             sbe.setNeedsOre(false);
             sbe.setNeedsFuel(false);
             smeltTimer       = smelter.getSmelterSmeltTicks();
+            maxSmeltTimer    = smeltTimer;
             particleCooldown = PARTICLE_INTERVAL;
             setLit(level, true);
             state            = STATE_SMELTING;

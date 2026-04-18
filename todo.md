@@ -43,31 +43,35 @@ add golem limit
 soul iron golem with wither rose for ranged attacks
 add raids 
 	- Illager Raids (Special Item for Enchanter)
-	- Piglin Raids ()
+	- Piglin Raids (Nether-Themed Expansion)
 	- Zombie Horde Raid (Villager Totem Reward)
 add raid item thats used to enchant stuff
 add village totem
 
 
 =========================== MISC ======================================
-proper heart gui :
-@ tool levels
-@ colony management, view all villagers, their levels rename them etc
+proper heart gui (Somewhat Implemented)
+@ tool levels (Somewhat Implemented)
+@ colony management, view all villagers, their levels, rename them etc
 @ preferred food source
 
 
 ============================ KNOWN BUGS/ISSUES =====================================
 SLOW VILLAGER WALK SPEED!!!!!!!!!!
 !!!!!!!make villagers persistent!!!!!
-make animals teleport back when they get too far
-make animalkeeper pick up eggs
-when you give animalkeeper items like wheat, seeds they disappear but he still uses them
-Iron Soul Golems name is the wrong way round
-Iron Soul Golems can be made outside a village heart's radius
-smith, smelter will starve
-smelter should prioritise coal
-2 progress bars in smiths gui
-no progress bar in smelter gui
-lumberjacks can mine the same tree
-lumberjacks need to break leaf blocks that obstruct their path
-chef should prioritise higher value foods
+
+Village Bees continue entering a Village beehive even after it has been destroyed
+
+
+====Potentially Fixed=====
+
+make animals teleport back when they get too far from animal pen.
+make animalkeeper pick up eggs.
+when you give animalkeeper items like wheat, seeds they disappear but he still uses them.
+Iron Soul Golems name is the wrong way round.
+Iron Soul Golems can be made outside a village heart's radius.
+smith, smelter will starve.
+smelter should prioritise coal.
+lumberjacks can mine the same tree.
+lumberjacks need to break leaf blocks that obstruct their path.
+chef should prioritise higher value foods.

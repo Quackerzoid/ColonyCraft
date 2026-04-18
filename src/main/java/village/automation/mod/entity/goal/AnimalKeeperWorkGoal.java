@@ -49,6 +49,7 @@ public class AnimalKeeperWorkGoal extends Goal {
     private static final double WALK_SPEED          = 0.6;
     private static final double REACH_SQ            = 6.25;   // 2.5 blocks
     private static final double PEN_REACH_SQ        = 16.0;   // 4 blocks for pen arrival
+    private static final double PEN_STRAY_DIST_SQ   = 400.0;  // 20 blocks before teleport
     private static final int    HERD_TIMEOUT        = 600;
     private static final int    APPROACH_TIMEOUT    = 300;
     private static final int    REQUEST_COOLDOWN_MAX = 600;
@@ -207,6 +208,14 @@ public class AnimalKeeperWorkGoal extends Goal {
             submitToolRequest(level, new ItemStack(Items.SHEARS));
             requestCooldown = REQUEST_COOLDOWN_MAX;
         }
+
+        // ── 6. Collect dropped eggs from chicken pen ──────────────────────────
+        if (animalType == AnimalType.CHICKEN) {
+            collectNearbyEggs(level, penPos, pen);
+        }
+
+        // ── 7. Teleport claimed animals that have strayed too far back to pen ─
+        teleportStrayedAnimals(level, penPos, pen);
     }
 
     // ── DEPOSIT_FOOD ──────────────────────────────────────────────────────────
@@ -485,6 +494,38 @@ public class AnimalKeeperWorkGoal extends Goal {
 
         targetAnimalUUID = null;
         shearCollectDelay = 2;  // wait 2 ticks for item entities to spawn
+    }
+
+    // ── Egg collection ────────────────────────────────────────────────────────
+
+    private void collectNearbyEggs(ServerLevel level, BlockPos penPos, AnimalPenBlockEntity pen) {
+        AABB searchBox = new AABB(penPos).inflate(SEARCH_RADIUS);
+        List<net.minecraft.world.entity.item.ItemEntity> items =
+                level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, searchBox);
+        SimpleContainer output = pen.getOutputContainer();
+        for (net.minecraft.world.entity.item.ItemEntity itemEntity : items) {
+            ItemStack stack = itemEntity.getItem();
+            if (stack.isEmpty() || !stack.is(Items.EGG)) continue;
+            depositIntoContainer(output, stack.copy());
+            itemEntity.discard();
+        }
+    }
+
+    // ── Stray animal teleport ─────────────────────────────────────────────────
+
+    private void teleportStrayedAnimals(ServerLevel level, BlockPos penPos, AnimalPenBlockEntity pen) {
+        for (UUID uuid : new java.util.ArrayList<>(pen.getClaimedAnimals())) {
+            var entity = level.getEntity(uuid);
+            if (!(entity instanceof Animal animal) || !animal.isAlive()) {
+                pen.removeClaimedAnimal(uuid);
+                continue;
+            }
+            double distSq = animal.distanceToSqr(
+                    penPos.getX() + 0.5, penPos.getY(), penPos.getZ() + 0.5);
+            if (distSq > PEN_STRAY_DIST_SQ) {
+                animal.teleportTo(penPos.getX() + 0.5, penPos.getY(), penPos.getZ() + 0.5);
+            }
+        }
     }
 
     // ── Wool collection ───────────────────────────────────────────────────────

@@ -1021,8 +1021,8 @@ public class CourierGoal extends Goal {
     }
 
     /**
-     * Returns a copy of the first valid furnace-fuel item found in any unclaimed
-     * chest, or {@code null} if none found.
+     * Returns a copy of a furnace-fuel item from any unclaimed chest, preferring
+     * coal (highest efficiency) before falling back to any valid fuel.
      */
     @Nullable
     private ItemStack findAnyFuelInChests(ServerLevel level,
@@ -1031,6 +1031,18 @@ public class CourierGoal extends Goal {
         if (heart == null) return null;
         java.util.UUID myId = courier.getUUID();
 
+        // First pass: prefer coal
+        for (BlockPos chestPos : heart.getRegisteredChests()) {
+            if (dispatcher != null && !dispatcher.isChestFree(chestPos, myId)) continue;
+            BlockEntity be = level.getBlockEntity(chestPos);
+            if (!(be instanceof Container container)) continue;
+            for (int i = 0; i < container.getContainerSize(); i++) {
+                ItemStack slot = container.getItem(i);
+                if (!slot.isEmpty() && slot.is(Items.COAL)) return slot.copy();
+            }
+        }
+
+        // Second pass: any valid fuel
         for (BlockPos chestPos : heart.getRegisteredChests()) {
             if (dispatcher != null && !dispatcher.isChestFree(chestPos, myId)) continue;
             BlockEntity be = level.getBlockEntity(chestPos);

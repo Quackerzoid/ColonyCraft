@@ -41,6 +41,23 @@ public class SmelterBlockEntity extends WorkplaceBlockEntityBase {
     /** Output slot — holds the smelted result ready for pickup. */
     private final SimpleContainer outputContainer = new SimpleContainer(1);
 
+    // ── GUI sync (smelt progress) ─────────────────────────────────────────────
+    // [0] = smeltProgress  (counts down from maxSmeltTimer to 0)
+    // [1] = maxSmeltTimer  (full duration, used to compute progress fraction)
+    private final int[] smeltSyncData = new int[]{0, 1200};
+    public final net.minecraft.world.inventory.ContainerData smeltData =
+            new net.minecraft.world.inventory.ContainerData() {
+                @Override public int get(int i)         { return (i >= 0 && i < 2) ? smeltSyncData[i] : 0; }
+                @Override public void set(int i, int v) { if (i >= 0 && i < 2) smeltSyncData[i] = v; }
+                @Override public int getCount()         { return 2; }
+            };
+
+    /** Called by {@link village.automation.mod.entity.goal.SmelterWorkGoal} every tick. */
+    public void setSmeltState(int progress, int maxTimer) {
+        smeltSyncData[0] = progress;
+        smeltSyncData[1] = maxTimer;
+    }
+
     public SmelterBlockEntity(BlockPos pos, BlockState state) {
         super(VillageMod.SMELTER_BLOCK_BE.get(), pos, state);
         this.oreContainer   .addListener(c -> this.setChanged());

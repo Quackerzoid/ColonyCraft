@@ -154,29 +154,32 @@ public class ChefWorkGoal extends Goal {
 
     // ── Ingredient helpers ────────────────────────────────────────────────────
 
+    /** Cook priority: highest nutrition/saturation first. */
+    private static final Item[] COOK_PRIORITY = {
+        Items.BEEF, Items.PORKCHOP,          // 8 food, 12.8 sat
+        Items.SALMON, Items.MUTTON,           // 6 food, 9.6 sat
+        Items.CHICKEN,                        // 6 food, 7.2 sat
+        Items.WHEAT, Items.COD, Items.RABBIT  // 5 food, 6.0 sat
+    };
+
     /**
-     * Returns the first cookable ingredient found in {@code input}, or
-     * {@code null} if the container holds nothing cookable.
+     * Returns the highest-priority cookable ingredient found in {@code input},
+     * or {@code null} if the container holds nothing cookable.
      */
     @Nullable
     private static Item findCookable(SimpleContainer input) {
-        for (int i = 0; i < input.getContainerSize(); i++) {
-            ItemStack slot = input.getItem(i);
-            if (slot.isEmpty()) continue;
-            if (isCookable(slot.getItem())) return slot.getItem();
+        for (Item preferred : COOK_PRIORITY) {
+            for (int i = 0; i < input.getContainerSize(); i++) {
+                ItemStack slot = input.getItem(i);
+                if (!slot.isEmpty() && slot.is(preferred)) return preferred;
+            }
         }
         return null;
     }
 
     private static boolean isCookable(Item item) {
-        return item == Items.WHEAT
-            || item == Items.COD
-            || item == Items.SALMON
-            || item == Items.BEEF
-            || item == Items.PORKCHOP
-            || item == Items.CHICKEN
-            || item == Items.MUTTON
-            || item == Items.RABBIT;
+        for (Item cookable : COOK_PRIORITY) if (item == cookable) return true;
+        return false;
     }
 
     /** Returns the output item that results from cooking {@code ingredient}. */

@@ -142,21 +142,7 @@ public class SmithingBlockScreen extends AbstractContainerScreen<SmithingBlockMe
         // Sidebar dividers
         g.fill(sX + 4, y + 14, sX + SIDE_W - 4, y + 15, COL_DIVIDER);  // below header
         g.fill(sX + 4, y + 46, sX + SIDE_W - 4, y + 47, COL_DIVIDER);  // below result item
-        g.fill(sX + 4, y + 130, sX + SIDE_W - 4, y + 131, COL_DIVIDER); // below ingredients
 
-        // ── Sidebar progress bar ──────────────────────────────────────────────
-        if (menu.isCrafting()) {
-            float progress = menu.getSmithProgress();
-            int barX = sX + 6;
-            int barY = y + 136;
-            int barW = SIDE_W - 12;
-            int barH = 10;
-            g.fill(barX, barY, barX + barW, barY + barH, COL_BAR_BG);
-            int fillW = (int) (barW * progress);
-            if (fillW > 0) {
-                g.fill(barX, barY, barX + fillW, barY + barH, COL_BAR_FG);
-            }
-        }
     }
 
     // ── Labels ────────────────────────────────────────────────────────────────
@@ -294,17 +280,6 @@ public class SmithingBlockScreen extends AbstractContainerScreen<SmithingBlockMe
                     stx, 60, 0x555555, false);
         }
 
-        // Progress bar label + percentage
-        if (menu.isCrafting()) {
-            g.drawString(this.font,
-                    Component.literal("Progress").withStyle(ChatFormatting.GRAY),
-                    stx, 133, 0x888888, false);
-            int pct = (int) (menu.getSmithProgress() * 100);
-            String pctStr = pct + "%";
-            g.drawString(this.font,
-                    Component.literal(pctStr).withStyle(ChatFormatting.WHITE),
-                    SIDE_X + SIDE_W - 6 - this.font.width(pctStr), 133, 0xFFFFFF, false);
-        }
     }
 
     // ── Full render pass ──────────────────────────────────────────────────────

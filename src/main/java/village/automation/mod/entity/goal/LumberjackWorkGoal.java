@@ -29,6 +29,7 @@ import village.automation.mod.entity.VillagerWorkerEntity;
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
@@ -60,6 +61,11 @@ import java.util.Set;
  * cooldown between requests).
  */
 public class LumberjackWorkGoal extends Goal {
+
+    // ── Global tree claim registry ────────────────────────────────────────────
+    /** Positions currently being chopped by any lumberjack — prevents double-assignment. */
+    private static final Set<BlockPos> CLAIMED_TREES =
+            Collections.synchronizedSet(new HashSet<>());
 
     // ── Tuning ────────────────────────────────────────────────────────────────
     /** Maximum log count collected per tree (flood-fill cap). */
@@ -134,6 +140,7 @@ public class LumberjackWorkGoal extends Goal {
         approachFailed  = false;
         swingCooldown   = SWING_INTERVAL;
         particleCooldown = PARTICLE_INTERVAL;
+        if (treeBasePos != null) CLAIMED_TREES.add(treeBasePos);
         navigateTo(treeBasePos);
     }
 
@@ -164,6 +171,7 @@ public class LumberjackWorkGoal extends Goal {
     public void stop() {
         lumberjack.setChoppingActive(false);
         lumberjack.getNavigation().stop();
+        if (treeBasePos != null) CLAIMED_TREES.remove(treeBasePos);
         // Apply a short scan cooldown only when actually stopping (no trees found /
         // navigation failed).  When looping tree→deposit→tree the goal never stops.
         scanCooldown   = SCAN_INTERVAL;
@@ -189,6 +197,7 @@ public class LumberjackWorkGoal extends Goal {
             approachTimeout = APPROACH_TIMEOUT;
             swingCooldown   = SWING_INTERVAL;
             particleCooldown = PARTICLE_INTERVAL;
+            CLAIMED_TREES.add(treeBasePos);
             navigateTo(treeBasePos);
             return;
         }
@@ -201,6 +210,7 @@ public class LumberjackWorkGoal extends Goal {
             if (--approachTimeout <= 0) {
                 approachFailed = true;
             } else if (lumberjack.getNavigation().isDone()) {
+                clearNearbyLeaves(level);
                 navigateTo(treeBasePos);
             }
         }
@@ -289,6 +299,33 @@ public class LumberjackWorkGoal extends Goal {
         }
     }
 
+    // ── Leaf clearing ─────────────────────────────────────────────────────────
+
+    /**
+     * Removes leaf blocks along the direct path to the tree base so the
+     * lumberjack's navigator can find a walkable route.
+     */
+    private void clearNearbyLeaves(ServerLevel level) {
+        if (treeBasePos == null) return;
+        BlockPos selfPos = lumberjack.blockPosition();
+        int minX = Math.min(selfPos.getX(), treeBasePos.getX()) - 1;
+        int maxX = Math.max(selfPos.getX(), treeBasePos.getX()) + 1;
+        int minY = selfPos.getY() - 1;
+        int maxY = selfPos.getY() + 4;
+        int minZ = Math.min(selfPos.getZ(), treeBasePos.getZ()) - 1;
+        int maxZ = Math.max(selfPos.getZ(), treeBasePos.getZ()) + 1;
+        for (int bx = minX; bx <= maxX; bx++) {
+            for (int by = minY; by <= maxY; by++) {
+                for (int bz = minZ; bz <= maxZ; bz++) {
+                    BlockPos bp = new BlockPos(bx, by, bz);
+                    if (level.getBlockState(bp).is(BlockTags.LEAVES)) {
+                        level.removeBlock(bp, false);
+                    }
+                }
+            }
+        }
+    }
+
     // ── Tree harvest ──────────────────────────────────────────────────────────
 
     private void harvestTree(ServerLevel level) {
@@ -305,6 +342,9 @@ public class LumberjackWorkGoal extends Goal {
         Item logItem      = baseState.getBlock().asItem();
         Item saplingItem  = getSaplingForLog(baseState);
         boolean isOak     = baseState.is(BlockTags.OAK_LOGS);
+
+        // Release the claim before breaking blocks (tree is gone after this)
+        CLAIMED_TREES.remove(treeBasePos);
 
         // Break every log block (top-down to look natural)
         for (int i = logPositions.size() - 1; i >= 0; i--) {
@@ -402,7 +442,7 @@ public class LumberjackWorkGoal extends Goal {
                     if (!level.getBlockState(check.above()).is(BlockTags.LOGS)) continue;
                     // Walk down to the base of this trunk
                     BlockPos base = findBase(level, check);
-                    if (!candidates.contains(base)) {
+                    if (!candidates.contains(base) && !CLAIMED_TREES.contains(base)) {
                         candidates.add(base);
                     }
                 }
