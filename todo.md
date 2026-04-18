@@ -1,6 +1,5 @@
 
 =========================== VILLAGERS ===========================
-villager levels/skills system
 villager happiness system
 CUSTOM WANDERING MERCHANT!!!!! (uses the shopkeeper (sells excess for emeralds) or player (you can buy animals))
 merchants wants and rates in his inventory changes based on what youve already sold - making diversity better
@@ -12,7 +11,7 @@ brewer
 allays?????
 
 =========================== VILLAGER LEVEL SYSTEMS =========================
-- The farmer should not be tilling soil that wasnt already tilled by the player. He should look at the crop when he digs at it and make particles appear with crop breaking noises for each swing. it should then after being broken take the same amount of swings to replace the crop
+- The farmer should not be tilling soil that wasnt already tilled by the player. He should look at the crop when he digs at it and make particles appear with crop breaking noises for each swing. when there is an open farmland with no seed he will take his swing amount to place the seed on it.
 
 Farmer has an exponential curve of swing amount of 10 to 1 when he hits 20 but he has bugs ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
