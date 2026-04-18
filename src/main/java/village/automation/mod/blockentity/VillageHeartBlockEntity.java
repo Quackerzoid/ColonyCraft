@@ -28,6 +28,17 @@ import village.automation.mod.entity.CourierEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillageHeartMenu;
+import village.automation.mod.raid.RaidLootTable;
+import village.automation.mod.raid.RaidSpawnHelper;
+
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,6 +57,8 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     public static final int TIER1_WORKER_CAP  = 8;
     public static final int TIER2_WORKER_CAP  = 16;
     public static final int TIER3_WORKER_CAP  = 32;
+
+    public enum RaidOutcome { NONE, VICTORY, DEFEAT }
 
     // ── Territory radii ───────────────────────────────────────────────────────
     public static final int BASE_RADIUS  = 32;
@@ -97,6 +110,19 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     // Computed server-side each tick; synced to client via ContainerData
     private int syncedWorkerCount = 0;
     private int syncedWorkerCap   = BASE_WORKER_CAP;
+
+    // ── Raid state ────────────────────────────────────────────────────────────
+    private boolean raidActive                  = false;
+    private int     raidWave                    = 0;
+    private int     raidMaxWaves                = 3;
+    private int     raidMobsRemaining           = 0;
+    private int     raidMobsSpawnedThisWave     = 0;
+    private int     raidWorkersAtStart          = 0;
+    private long    raidCooldownUntil           = 0L;
+    private final List<UUID> raidMobUUIDs       = new ArrayList<>();
+    private boolean raidRetreating              = false;
+    private int     raidRetreatingTicksRemaining = 0;
+    private RaidOutcome pendingOutcome          = RaidOutcome.NONE;
 
     // ContainerData: index 0 = storedWheat, 1 = workerCount, 2 = workerCap,
     //                index 3 = radius (derived, read-only setter),
@@ -210,6 +236,14 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         } else {
             be.scanForChests(serverLevel);
             be.chestScanCooldown = CHEST_SCAN_INTERVAL;
+        }
+
+        // ── Raid retreat countdown ─────────────────────────────────────────────
+        if (be.raidRetreating && be.raidRetreatingTicksRemaining > 0) {
+            be.raidRetreatingTicksRemaining--;
+            if (be.raidRetreatingTicksRemaining <= 0) {
+                be.endRaid(be.pendingOutcome, serverLevel);
+            }
         }
     }
 
@@ -527,6 +561,222 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         return false;
     }
 
+    // ── Raid ──────────────────────────────────────────────────────────────────
+
+    public boolean isRaidActive()    { return raidActive; }
+    public boolean isRaidRetreating(){ return raidRetreating; }
+    public int  getRaidMobsRemaining(){ return raidMobsRemaining; }
+    public long getRaidCooldownUntil(){ return raidCooldownUntil; }
+    public List<UUID> getRaidMobUUIDs(){ return raidMobUUIDs; }
+
+    public void addRaidMob(UUID uuid) {
+        raidMobUUIDs.add(uuid);
+        setChanged();
+    }
+
+    public void decrementRaidMobsRemaining() {
+        raidMobsRemaining = Math.max(0, raidMobsRemaining - 1);
+        setChanged();
+    }
+
+    public void startRaid(ServerLevel level) {
+        raidActive   = true;
+        raidWave     = 0;
+        raidMaxWaves = switch (appliedUpgrades) {
+            case 1  -> 4;
+            case 2  -> 5;
+            case 3  -> 6;
+            default -> 3;
+        };
+        raidMobsRemaining       = 0;
+        raidMobsSpawnedThisWave = 0;
+        raidRetreating          = false;
+        pendingOutcome          = RaidOutcome.NONE;
+        raidWorkersAtStart      = countLiveWorkers(level);
+        setChanged();
+        advanceWave(level);
+    }
+
+    public void advanceWave(ServerLevel level) {
+        raidWave++;
+        if (raidWave > raidMaxWaves) {
+            endRaid(RaidOutcome.VICTORY, level);
+            return;
+        }
+        int spawned = RaidSpawnHelper.spawnWave(this, level, raidWave);
+        raidMobsSpawnedThisWave = spawned;
+        raidMobsRemaining       = spawned;
+        setChanged();
+        broadcastSubtitle(level, "§6Wave " + raidWave + " of " + raidMaxWaves, 96);
+    }
+
+    public void endRaid(RaidOutcome outcome, ServerLevel level) {
+        BlockPos hp = getBlockPos();
+
+        if (outcome == RaidOutcome.VICTORY) {
+            raidCooldownUntil = level.getGameTime() + 72000L;
+            float scale = raidMaxWaves / 3.0f;
+            for (ItemStack stack : RaidLootTable.rollWithLevel(level.getRandom(), raidWave, level)) {
+                int cnt = Math.min((int)(stack.getCount() * scale), stack.getMaxStackSize());
+                stack.setCount(Math.max(1, cnt));
+                level.addFreshEntity(new ItemEntity(level,
+                        hp.getX() + 0.5, hp.getY() + 1.0, hp.getZ() + 0.5, stack));
+            }
+            broadcastTitle(level, "§aRaid Defeated! §7Your village stands strong.", 96);
+        } else if (outcome == RaidOutcome.DEFEAT) {
+            raidCooldownUntil = level.getGameTime() + 24000L;
+            broadcastTitle(level, "§cYour village has fallen...", 96);
+        }
+
+        // Discard all living raid mobs
+        for (UUID uuid : raidMobUUIDs) {
+            Entity e = level.getEntity(uuid);
+            if (e != null && e.isAlive()) e.discard();
+        }
+        raidMobUUIDs.clear();
+
+        // Release any kidnapped workers
+        AABB box = new AABB(hp).inflate(200);
+        level.getEntitiesOfClass(VillagerWorkerEntity.class, box,
+                w -> w.getPersistentData().getBoolean("Kidnapped"))
+             .forEach(w -> {
+                 w.stopRiding();
+                 w.getPersistentData().remove("Kidnapped");
+             });
+
+        raidActive                   = false;
+        raidWave                     = 0;
+        raidRetreating               = false;
+        pendingOutcome               = RaidOutcome.NONE;
+        raidMobsRemaining            = 0;
+        raidMobsSpawnedThisWave      = 0;
+        raidRetreatingTicksRemaining = 0;
+        setChanged();
+    }
+
+    public void checkRetreatCondition(ServerLevel level) {
+        if (!raidActive || raidRetreating) return;
+        if (raidMobsRemaining < raidMobsSpawnedThisWave * 0.40) {
+            triggerRetreat(RaidOutcome.VICTORY, level);
+        }
+    }
+
+    public void checkRaiderVictoryCondition(ServerLevel level) {
+        if (!raidActive || raidRetreating) return;
+        int radius = getRadius();
+        BlockPos hp = getBlockPos();
+        double r2 = (double) radius * radius;
+        long alive = workerUUIDs.stream()
+                .map(level::getEntity)
+                .filter(e -> e instanceof VillagerWorkerEntity w && w.isAlive()
+                        && w.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) <= r2)
+                .count();
+        if ((double) alive <= raidWorkersAtStart * 0.40) {
+            triggerRetreat(RaidOutcome.DEFEAT, level);
+        }
+    }
+
+    private void triggerRetreat(RaidOutcome outcome, ServerLevel level) {
+        raidRetreating               = true;
+        pendingOutcome               = outcome;
+        raidRetreatingTicksRemaining = 600;
+        setChanged();
+
+        String subtitle = outcome == RaidOutcome.VICTORY
+                ? "§eThe raiders are retreating!"
+                : "§cThe raiders have taken enough — they're withdrawing!";
+        broadcastSubtitle(level, subtitle, 96);
+
+        BlockPos hp = getBlockPos();
+        for (UUID uuid : raidMobUUIDs) {
+            Entity e = level.getEntity(uuid);
+            if (!(e instanceof PathfinderMob mob) || !mob.isAlive()) continue;
+            if (mob.getPersistentData().getInt("RaidCaptain") == 1) continue;
+            if (mob.getPersistentData().getInt("SupplyKeeper") == 1) continue;
+
+            RaidSpawnHelper.attemptKidnap(mob, this, level);
+
+            double dx  = mob.getX() - hp.getX();
+            double dz  = mob.getZ() - hp.getZ();
+            double len = Math.sqrt(dx * dx + dz * dz);
+            if (len < 0.01) { dx = 1; dz = 0; len = 1; }
+            double dist = 80 + level.getRandom().nextDouble() * 40;
+            int rx = (int)(hp.getX() + (dx / len) * dist);
+            int rz = (int)(hp.getZ() + (dz / len) * dist);
+            BlockPos retreatPos = level.getHeightmapPos(
+                    net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(rx, 0, rz));
+
+            mob.getPersistentData().putInt("RetreatX", retreatPos.getX());
+            mob.getPersistentData().putInt("RetreatY", retreatPos.getY());
+            mob.getPersistentData().putInt("RetreatZ", retreatPos.getZ());
+            mob.getPersistentData().putBoolean("Retreating", true);
+
+            var speedAttr = mob.getAttribute(Attributes.MOVEMENT_SPEED);
+            if (speedAttr != null) speedAttr.setBaseValue(speedAttr.getBaseValue() * 1.3);
+
+            mob.getNavigation().moveTo(retreatPos.getX() + 0.5,
+                    retreatPos.getY(), retreatPos.getZ() + 0.5, 1.3);
+        }
+    }
+
+    // Broadcasts a full-screen title to players within radius blocks of this heart.
+    public void broadcastTitle(ServerLevel level, String title, double radius) {
+        BlockPos hp = getBlockPos();
+        double r2   = radius * radius;
+        Component c = Component.literal(title);
+        for (ServerPlayer p : level.players()) {
+            if (p.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) <= r2) {
+                p.connection.send(new ClientboundSetTitlesAnimationPacket(10, 70, 20));
+                p.connection.send(new ClientboundSetTitleTextPacket(c));
+            }
+        }
+    }
+
+    public void broadcastSubtitle(ServerLevel level, String subtitle, double radius) {
+        BlockPos hp = getBlockPos();
+        double r2   = radius * radius;
+        Component c = Component.literal(subtitle);
+        for (ServerPlayer p : level.players()) {
+            if (p.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) <= r2) {
+                p.connection.send(new ClientboundSetSubtitleTextPacket(c));
+            }
+        }
+    }
+
+    public void broadcastActionBar(ServerLevel level, String msg, double radius) {
+        BlockPos hp = getBlockPos();
+        double r2   = radius * radius;
+        Component c = Component.literal(msg);
+        for (ServerPlayer p : level.players()) {
+            if (p.distanceToSqr(hp.getX(), hp.getY(), hp.getZ()) <= r2) {
+                p.displayClientMessage(c, true);
+            }
+        }
+    }
+
+    /** Finds the nearest VillageHeartBlockEntity within maxDist blocks, or null. */
+    @javax.annotation.Nullable
+    public static VillageHeartBlockEntity findNearestWithin(ServerLevel level, BlockPos origin, double maxDist) {
+        int cr  = ((int) maxDist >> 4) + 1;
+        int ocx = origin.getX() >> 4;
+        int ocz = origin.getZ() >> 4;
+        double bestSq = maxDist * maxDist;
+        VillageHeartBlockEntity best = null;
+        for (int cx = -cr; cx <= cr; cx++) {
+            for (int cz = -cr; cz <= cr; cz++) {
+                if (!level.hasChunk(ocx + cx, ocz + cz)) continue;
+                LevelChunk chunk = level.getChunk(ocx + cx, ocz + cz);
+                for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
+                    if (!(entry.getValue() instanceof VillageHeartBlockEntity hbe)) continue;
+                    double dSq = entry.getKey().distSqr(origin);
+                    if (dSq <= bestSq) { bestSq = dSq; best = hbe; }
+                }
+            }
+        }
+        return best;
+    }
+
     // ── MenuProvider ──────────────────────────────────────────────────────────
 
     @Override
@@ -604,6 +854,25 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
             chestList.add(ct);
         }
         tag.put("RegisteredChests", chestList);
+
+        // Raid state
+        tag.putBoolean("RaidActive",                  this.raidActive);
+        tag.putInt("RaidWave",                        this.raidWave);
+        tag.putInt("RaidMaxWaves",                    this.raidMaxWaves);
+        tag.putInt("RaidMobsRemaining",               this.raidMobsRemaining);
+        tag.putInt("RaidMobsSpawnedThisWave",         this.raidMobsSpawnedThisWave);
+        tag.putInt("RaidWorkersAtStart",              this.raidWorkersAtStart);
+        tag.putLong("RaidCooldownUntil",              this.raidCooldownUntil);
+        tag.putBoolean("RaidRetreating",              this.raidRetreating);
+        tag.putInt("RaidRetreatingTicksRemaining",    this.raidRetreatingTicksRemaining);
+        tag.putString("PendingOutcome",               this.pendingOutcome.name());
+        ListTag raidMobList = new ListTag();
+        for (UUID uuid : this.raidMobUUIDs) {
+            CompoundTag t = new CompoundTag();
+            t.putUUID("UUID", uuid);
+            raidMobList.add(t);
+        }
+        tag.put("RaidMobUUIDs", raidMobList);
     }
 
     @Override
@@ -670,6 +939,27 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         for (int i = 0; i < chestList.size(); i++) {
             CompoundTag ct = chestList.getCompound(i);
             this.registeredChests.add(new BlockPos(ct.getInt("X"), ct.getInt("Y"), ct.getInt("Z")));
+        }
+
+        // Raid state
+        this.raidActive                   = tag.getBoolean("RaidActive");
+        this.raidWave                     = tag.getInt("RaidWave");
+        this.raidMaxWaves                 = tag.contains("RaidMaxWaves") ? tag.getInt("RaidMaxWaves") : 3;
+        this.raidMobsRemaining            = tag.getInt("RaidMobsRemaining");
+        this.raidMobsSpawnedThisWave      = tag.getInt("RaidMobsSpawnedThisWave");
+        this.raidWorkersAtStart           = tag.getInt("RaidWorkersAtStart");
+        this.raidCooldownUntil            = tag.getLong("RaidCooldownUntil");
+        this.raidRetreating               = tag.getBoolean("RaidRetreating");
+        this.raidRetreatingTicksRemaining = tag.getInt("RaidRetreatingTicksRemaining");
+        try {
+            this.pendingOutcome = RaidOutcome.valueOf(tag.getString("PendingOutcome"));
+        } catch (IllegalArgumentException ignored) {
+            this.pendingOutcome = RaidOutcome.NONE;
+        }
+        this.raidMobUUIDs.clear();
+        ListTag raidMobList = tag.getList("RaidMobUUIDs", Tag.TAG_COMPOUND);
+        for (int i = 0; i < raidMobList.size(); i++) {
+            this.raidMobUUIDs.add(raidMobList.getCompound(i).getUUID("UUID"));
         }
     }
 }

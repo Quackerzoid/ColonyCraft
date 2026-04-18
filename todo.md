@@ -60,7 +60,6 @@ proper heart gui (Somewhat Implemented)
 
 
 ============================ KNOWN BUGS/ISSUES =====================================
-!!!!!!!make villagers persistent!!!!!
 
 Village Bees continue entering a Village beehive even after it has been destroyed
 

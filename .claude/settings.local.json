@@ -32,7 +32,16 @@
       "Bash(del \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\java\\\\village\\\\automation\\\\mod\\\\client\\\\renderer\\\\layer\\\\SmithProfessionLayer.java\")",
       "Bash(grep -E '\\\\.java$|^d')",
       "Bash(./gradlew compileJava)",
-      "Bash(find \"D:\\\\neoforge mdk mod/src/main/java/village/automation/mod/entity\" -type f -name \"*.java\" -exec basename {} \\\\;)"
+      "Bash(find \"D:\\\\neoforge mdk mod/src/main/java/village/automation/mod/entity\" -type f -name \"*.java\" -exec basename {} \\\\;)",
+      "Bash(find \"D:/neoforge mdk mod/src/main/java/village/automation/mod/\" -name \"*.java\" -exec grep -l \"@SubscribeEvent\\\\|@EventBusSubscriber\\\\|onBlockPlaced\\\\|onEntitySpawn\" {} \\\\;)",
+      "Bash(./gradlew dependencies *)",
+      "Bash(jar -xf build/moddev/artifacts/neoforge-21.1.226-sources.jar net/neoforged/neoforge/event/tick/PlayerTickEvent.java)",
+      "Bash(cat net/neoforged/neoforge/event/tick/PlayerTickEvent.java)",
+      "Bash(jar -xf build/moddev/artifacts/neoforge-21.1.226-sources.jar net/minecraft/world/entity/animal/horse/Horse.java)",
+      "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/Markings.java)",
+      "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/Variant.java)",
+      "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java)",
+      "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/AbstractHorse.java)"
     ]
   }
 }
