@@ -15,6 +15,9 @@ allays?????
 
 Farmer has an exponential curve of swing amount of 10 to 1 when he hits 20 but he has bugs ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+- Skill curve implemented:
+Blacksmith
+
 - Skill curve todo:
 butcher
 animal keeper
@@ -23,7 +26,6 @@ chef
 miner
 lumberjack
 fisherman
-blacksmith
 smelter
 
 
