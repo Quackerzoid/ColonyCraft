@@ -1,6 +1,8 @@
 
 =========================== VILLAGERS ===========================
+
 villager happiness system
+villager age?
 CUSTOM WANDERING MERCHANT!!!!! (uses the shopkeeper (sells excess for emeralds) or player (you can buy animals))
 merchants wants and rates in his inventory changes based on what youve already sold - making diversity better
 SHOPKEEPER!!!!! (they sit at their block and you designate what you want them to sell of your resources)
@@ -55,6 +57,7 @@ proper heart gui :
 
 
 ============================ KNOWN BUGS/ISSUES =====================================
+SLOW VILLAGER WALK SPEED!!!!!!!!!!
 !!!!!!!make villagers persistent!!!!!
 make animals teleport back when they get too far
 make animalkeeper pick up eggs
