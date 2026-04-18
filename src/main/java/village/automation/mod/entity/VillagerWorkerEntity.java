@@ -28,6 +28,7 @@ import net.minecraft.world.entity.npc.AbstractVillager;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.goal.BeekeeperWorkGoal;
+import village.automation.mod.entity.goal.BellRallyGoal;
 import village.automation.mod.entity.goal.ButcherWorkGoal;
 import village.automation.mod.entity.goal.ChefWorkGoal;
 import village.automation.mod.entity.goal.FarmerWorkGoal;
@@ -191,6 +192,28 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public void setFishingActive(boolean active) { this.fishingActive = active; }
     public boolean isFishingActive()             { return fishingActive; }
 
+    // ── Bell rally state (transient — not persisted) ──────────────────────────
+    /** Set when a nearby bell is rung; cleared by BellRallyGoal on completion. */
+    @Nullable private BlockPos bellRallyPos   = null;
+    private int                bellRallyTimer = 0;
+
+    @Nullable public BlockPos getBellRallyPos()  { return bellRallyPos;   }
+    public int getBellRallyTimer()               { return bellRallyTimer; }
+
+    public void startBellRally(BlockPos bellPos) {
+        this.bellRallyPos   = bellPos;
+        this.bellRallyTimer = 600; // 30 seconds
+    }
+
+    public void tickBellRallyTimer() {
+        if (bellRallyTimer > 0) bellRallyTimer--;
+    }
+
+    public void clearBellRally() {
+        bellRallyPos   = null;
+        bellRallyTimer = 0;
+    }
+
     // ── Employment (server-side authoritative) ────────────────────────────────
     /** Personal name without any job prefix (e.g. "Alice"). */
     private String baseName = "";
@@ -222,6 +245,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(0, new OpenNearbyDoorsGoal(this, true));
+        this.goalSelector.addGoal(0, new BellRallyGoal(this));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
         this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
