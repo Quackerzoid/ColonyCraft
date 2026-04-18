@@ -266,6 +266,14 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.entityData.set(DATA_LEVEL, Mth.clamp(level, 0, MAX_LEVEL));
     }
 
+    /** Immediately grants one level and resets XP, clamped to {@value #MAX_LEVEL}. */
+    public void devLevelUp() {
+        if (getLevel() < MAX_LEVEL) {
+            setLevel(getLevel() + 1);
+            setXp(0);
+        }
+    }
+
     /** Current XP toward the next level, safe to read on the client. */
     public int getXp() { return this.entityData.get(DATA_XP); }
 
@@ -316,6 +324,19 @@ public class VillagerWorkerEntity extends AbstractVillager {
     public int getWorkSwings() {
         int lvl = getLevel();
         return Math.max(1, (int) Math.round(Math.pow(10.0, (20 - lvl) / 20.0)));
+    }
+
+    /**
+     * Ticks the blacksmith needs to complete one craft.
+     * Exponential curve: 1200 ticks (60 s) at level 1, 100 ticks (5 s) at level 20.
+     * Level 0 is treated as level 1.
+     *
+     * <p>Formula: {@code 1200 × (100/1200)^((level−1)/19)}
+     */
+    public int getSmithCraftTicks() {
+        int lvl = Math.max(1, Math.min(getLevel(), MAX_LEVEL));
+        double t = 1200.0 * Math.pow(100.0 / 1200.0, (lvl - 1) / 19.0);
+        return (int) Math.round(t);
     }
 
     /**

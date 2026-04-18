@@ -151,16 +151,21 @@ public class SmithingBlockMenu extends AbstractContainerMenu {
     /** Crafting state: 0=IDLE, 1=AWAITING, 2=CRAFTING, 3=READY. */
     public int getSmithState() { return containerData.get(0); }
 
-    /** Craft timer (200 = just started, 0 = done). */
+    /** Craft timer (counts down to 0 during CRAFTING). */
     public int getSmithTimer() { return containerData.get(1); }
 
+    /** Max craft timer set when crafting began (varies by blacksmith level). */
+    public int getSmithMaxTimer() { return containerData.get(3); }
+
     /**
-     * Progress 0.0 (just started) → 1.0 (done/idle).
+     * Progress 0.0 (just started) → 1.0 (done).
      * Returns 0 when not in CRAFTING state.
      */
     public float getSmithProgress() {
-        int t = getSmithTimer();
-        return t <= 0 ? 0f : 1.0f - (t / 200.0f);
+        int t   = getSmithTimer();
+        int max = getSmithMaxTimer();
+        if (t <= 0 || max <= 0) return 0f;
+        return 1.0f - ((float) t / max);
     }
 
     /**

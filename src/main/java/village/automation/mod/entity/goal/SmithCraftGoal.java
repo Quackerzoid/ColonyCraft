@@ -39,13 +39,13 @@ import java.util.List;
  */
 public class SmithCraftGoal extends Goal {
 
-    private static final int    CRAFT_TICKS      = 200;  // 10 s per craft
     private static final int    PARTICLE_INTERVAL = 20;  // particle burst every second
     private static final double WALK_SPEED        = 0.6;
     private static final double WORK_REACH_SQ     = 6.25; // within 2.5 blocks of the block
 
     private final VillagerWorkerEntity smith;
-    private int particleCooldown = 0;
+    private int particleCooldown   = 0;
+    private int maxCraftingTimer   = 1200;
 
     public SmithCraftGoal(VillagerWorkerEntity smith) {
         this.smith = smith;
@@ -86,7 +86,8 @@ public class SmithCraftGoal extends Goal {
                 sbe.setSmithState(
                         smith.getSmithCraftingState(),
                         smith.getSmithCraftingTimer(),
-                        itemId);
+                        itemId,
+                        maxCraftingTimer);
             }
         }
     }
@@ -141,7 +142,8 @@ public class SmithCraftGoal extends Goal {
         }
 
         if (recipe.satisfied(smith.getSmithInputContainer())) {
-            smith.setSmithCraftingTimer(CRAFT_TICKS * smith.getWorkSwings());
+            maxCraftingTimer = smith.getSmithCraftTicks();
+            smith.setSmithCraftingTimer(maxCraftingTimer);
             particleCooldown = PARTICLE_INTERVAL;
             smith.setSmithCraftingState(VillagerWorkerEntity.SMITH_CRAFTING);
         }

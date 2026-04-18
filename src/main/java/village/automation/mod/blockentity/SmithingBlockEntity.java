@@ -15,20 +15,22 @@ public class SmithingBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── GUI sync ──────────────────────────────────────────────────────────────
     // [0] = smithCraftingState  (0=IDLE, 1=AWAITING, 2=CRAFTING, 3=READY)
-    // [1] = smithCraftingTimer  (0-200, counts down during CRAFTING)
+    // [1] = smithCraftingTimer  (counts down to 0 during CRAFTING)
     // [2] = result item raw registry ID  (-1 = no active recipe)
-    private final int[] syncData = new int[]{0, 0, -1};
+    // [3] = maxCraftingTimer (value when crafting started, for progress bar)
+    private final int[] syncData = new int[]{0, 0, -1, 1200};
     public final ContainerData data = new ContainerData() {
-        @Override public int get(int i)         { return (i >= 0 && i < 3) ? syncData[i] : 0; }
-        @Override public void set(int i, int v) { if (i >= 0 && i < 3) syncData[i] = v; }
-        @Override public int getCount()         { return 3; }
+        @Override public int get(int i)         { return (i >= 0 && i < 4) ? syncData[i] : 0; }
+        @Override public void set(int i, int v) { if (i >= 0 && i < 4) syncData[i] = v; }
+        @Override public int getCount()         { return 4; }
     };
 
     /** Called by {@link village.automation.mod.entity.goal.SmithCraftGoal} every tick. */
-    public void setSmithState(int state, int timer, int resultItemId) {
+    public void setSmithState(int state, int timer, int resultItemId, int maxTimer) {
         syncData[0] = state;
         syncData[1] = timer;
         syncData[2] = resultItemId;
+        syncData[3] = maxTimer;
     }
 
     public SmithingBlockEntity(BlockPos pos, BlockState state) {

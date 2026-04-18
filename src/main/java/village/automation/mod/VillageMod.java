@@ -80,6 +80,7 @@ import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.CourierEntity;
 import village.automation.mod.entity.VillageBeeEntity;
 import village.automation.mod.entity.VillagerWorkerEntity;
+import village.automation.mod.item.DevLevelUpItem;
 import village.automation.mod.item.VillageWandItem;
 import village.automation.mod.loot.VillagerSoulLootModifier;
 import village.automation.mod.menu.AnimalPenBlockMenu;
@@ -319,6 +320,11 @@ public class VillageMod {
     public static final DeferredItem<Item> SOUL_EYE =
             ITEMS.registerSimpleItem("soul_eye", new Item.Properties().stacksTo(16));
 
+    // ── Dev: Level-Up Orb ────────────────────────────────────────────────────
+    public static final DeferredItem<DevLevelUpItem> DEV_LEVEL_UP =
+            ITEMS.register("dev_level_up",
+                    () -> new DevLevelUpItem(new Item.Properties().stacksTo(64)));
+
     // ── Village Wand ─────────────────────────────────────────────────────────
     public static final DeferredItem<VillageWandItem> VILLAGE_WAND =
             ITEMS.register("village_wand",
@@ -430,6 +436,7 @@ public class VillageMod {
                         output.accept(VILLAGE_UPGRADE_III.get());
                         output.accept(SOUL_PUMPKIN_ITEM.get());
                         output.accept(VILLAGER_WORKER_SPAWN_EGG.get());
+                        output.accept(DEV_LEVEL_UP.get());
                         output.accept(EXAMPLE_ITEM.get());
                         output.accept(EXAMPLE_BLOCK_ITEM.get());
                     }).build());
