@@ -357,6 +357,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
         return levelScaledTicks(1200, 100);
     }
 
+    /** Ticks per fishing catch for the fisherman (60 s → 5 s over levels 1–20). */
+    public int getFishermanFishTicks() {
+        return levelScaledTicks(1200, 100);
+    }
+
     /**
      * Chance (0.0–0.2) that the farmer accidentally destroys farmland while harvesting.
      * Linear: 20 % at level 0, 0 % at level 20.

@@ -43,8 +43,8 @@ import java.util.UUID;
 public class FishingBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Tuning ────────────────────────────────────────────────────────────────
-    /** Fixed fishing duration — 20 s regardless of rod enchantments. */
-    public static final int FISH_INTERVAL = 400;
+    /** Default fishing interval (level 1 = 60 s). Overridden each tick by worker level. */
+    public static final int FISH_INTERVAL = 1200;
 
     // ── Output inventory (3×3) ────────────────────────────────────────────────
     private final SimpleContainer outputContainer = new SimpleContainer(9);
@@ -58,7 +58,7 @@ public class FishingBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Fish progress ─────────────────────────────────────────────────────────
     private int     fishTimer    = FISH_INTERVAL;
-    private int     fishInterval = FISH_INTERVAL;
+    private int     fishInterval = FISH_INTERVAL; // updated each tick from worker level
     /** Latched by {@link #serverTick} when the countdown reaches zero. */
     private boolean fishComplete = false;
 
@@ -141,6 +141,12 @@ public class FishingBlockEntity extends WorkplaceBlockEntityBase {
                                   FishingBlockEntity be) {
         VillagerWorkerEntity worker = be.getActiveWorker(level);
         if (worker == null) return;
+
+        int newInterval = worker.getFishermanFishTicks();
+        if (newInterval != be.fishInterval) {
+            be.fishInterval = newInterval;
+            if (be.fishTimer > be.fishInterval) be.fishTimer = be.fishInterval;
+        }
 
         be.fishTimer--;
         if (be.fishTimer <= 0) {
