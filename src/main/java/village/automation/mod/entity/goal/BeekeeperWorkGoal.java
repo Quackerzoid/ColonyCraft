@@ -207,6 +207,7 @@ public class BeekeeperWorkGoal extends Goal {
         targetBee.discard();
         sl.addFreshEntity(villageBee);
         be.claimBee(villageBee.getUUID());
+        keeper.gainXp(5);
 
         targetBee = null;
         returnToBlock();

@@ -394,6 +394,7 @@ public class AnimalKeeperWorkGoal extends Goal {
         // Put both animals in love mode
         a1.setInLove(null);
         a2.setInLove(null);
+        keeper.gainXp(3);
 
         // Play eating sound at keeper location
         level.playSound(null,
@@ -471,6 +472,7 @@ public class AnimalKeeperWorkGoal extends Goal {
         // Shear the sheep
         shearPos = sheep.blockPosition();
         sheep.shear(SoundSource.PLAYERS);
+        keeper.gainXp(3);
 
         // Damage the shears in the tool slot
         ItemStack shears = keeper.getToolContainer().getItem(0);

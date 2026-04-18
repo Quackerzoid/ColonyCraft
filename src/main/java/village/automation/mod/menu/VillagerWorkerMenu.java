@@ -104,6 +104,22 @@ public class VillagerWorkerMenu extends AbstractContainerMenu {
         return entity != null ? entity.getFoodLevel() : VillagerWorkerEntity.MAX_FOOD;
     }
 
+    /** Current worker level (0–{@value VillagerWorkerEntity#MAX_LEVEL}). Client-safe. */
+    public int getLevel() {
+        return entity != null ? entity.getLevel() : 0;
+    }
+
+    /** XP the worker has accumulated toward the next level. Client-safe. */
+    public int getXp() {
+        return entity != null ? entity.getXp() : 0;
+    }
+
+    /** XP required to advance from the current level to the next. Client-safe. */
+    public int getXpForNextLevel() {
+        int lvl = getLevel();
+        return VillagerWorkerEntity.getXpForLevel(lvl);
+    }
+
     @Override
     public boolean stillValid(Player player) {
         return this.entity == null || (this.entity.isAlive() && player.distanceToSqr(this.entity) < 64.0);

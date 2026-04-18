@@ -196,6 +196,7 @@ public class MinerWorkGoal extends Goal {
         if (--swingCooldown <= 0) {
             swingCooldown = SWING_INTERVAL;
             miner.swing(InteractionHand.MAIN_HAND);
+            miner.gainXp(1);
 
             // Play the floor block's hit sound (the soft "tick" heard while mining).
             // Pitch is randomised slightly so repeated swings don't sound mechanical.

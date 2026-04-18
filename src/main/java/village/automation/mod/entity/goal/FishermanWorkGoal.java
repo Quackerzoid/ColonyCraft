@@ -278,6 +278,7 @@ public class FishermanWorkGoal extends Goal {
             }
 
             be.clearFishComplete();
+            fisherman.gainXp(5);
             // Immediately re-cast — reset animTick so the throw sound plays on the
             // very next tick that equals (animTick % CAST_INTERVAL == 1)
             animTick = 0;

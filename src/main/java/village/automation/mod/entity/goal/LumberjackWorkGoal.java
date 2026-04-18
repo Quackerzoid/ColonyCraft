@@ -259,6 +259,7 @@ public class LumberjackWorkGoal extends Goal {
                 mill.clearChopCompleted();
                 lumberjack.setChoppingActive(false);
                 harvestTree(level);
+                lumberjack.gainXp(3);
                 phase = Phase.DEPOSIT;
                 if (lumbermillPos != null) navigateToMill();
             }

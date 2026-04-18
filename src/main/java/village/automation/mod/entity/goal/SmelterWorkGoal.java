@@ -154,7 +154,7 @@ public class SmelterWorkGoal extends Goal {
         if (hasOre && hasFuel) {
             sbe.setNeedsOre(false);
             sbe.setNeedsFuel(false);
-            smeltTimer       = SMELT_TICKS;
+            smeltTimer       = SMELT_TICKS * smelter.getWorkSwings();
             particleCooldown = PARTICLE_INTERVAL;
             setLit(level, true);
             state            = STATE_SMELTING;
@@ -272,9 +272,11 @@ public class SmelterWorkGoal extends Goal {
         boolean outputRoom   = latestOut.isEmpty()
                                || latestOut.getCount() < latestOut.getMaxStackSize();
 
+        smelter.gainXp(10);
+
         if (!nextOre.isEmpty() && moreFuel && outputRoom) {
             // More ore in the slot and fuel available — continue the batch
-            smeltTimer       = SMELT_TICKS;
+            smeltTimer       = SMELT_TICKS * smelter.getWorkSwings();
             particleCooldown = PARTICLE_INTERVAL;
             // state remains STATE_SMELTING; LIT stays true
         } else {

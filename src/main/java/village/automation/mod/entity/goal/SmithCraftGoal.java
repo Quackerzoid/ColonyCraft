@@ -141,7 +141,7 @@ public class SmithCraftGoal extends Goal {
         }
 
         if (recipe.satisfied(smith.getSmithInputContainer())) {
-            smith.setSmithCraftingTimer(CRAFT_TICKS);
+            smith.setSmithCraftingTimer(CRAFT_TICKS * smith.getWorkSwings());
             particleCooldown = PARTICLE_INTERVAL;
             smith.setSmithCraftingState(VillagerWorkerEntity.SMITH_CRAFTING);
         }
@@ -203,6 +203,7 @@ public class SmithCraftGoal extends Goal {
         if (consumeIngredients(smith.getSmithInputContainer(), recipe)) {
             smith.getSmithOutputContainer().setItem(0, new ItemStack(recipe.result, recipe.resultCount));
             smith.setSmithCraftingState(VillagerWorkerEntity.SMITH_READY);
+            smith.gainXp(25);
         } else {
             smith.setSmithCraftingState(VillagerWorkerEntity.SMITH_IDLE);
             smith.setSmithCurrentRequest(null);

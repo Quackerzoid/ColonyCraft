@@ -9,12 +9,22 @@ the tavernkeep - gives beer to villagers in the evening to increase happiness!
 the bard - during day roams the village and goes up to the unhappiest villagers and increases their happiness / during evening plays in the tavern to increase happiness even more
 enchanter
 brewer
-butcher & block
 allays?????
 
-=========================== VILLAGER SKILL SYSTEMS =========================
-- this rewards you for keeping villagers alive and running the village for a long time
-higher level a villager is the more rewards they get from their duty
+=========================== VILLAGER LEVEL SYSTEMS =========================
+- The farmer should not be tilling soil that wasnt already tilled by the player. He should look at the crop when he digs at it and make particles appear with crop breaking noises for each swing. it should then after being broken take the same amount of swings to replace the crop
+
+- Skill curve todo:
+butcher
+animal keeper
+beekeeper
+chef
+miner
+lumberjack
+fisherman
+blacksmith
+smelter
+
 
 
 
@@ -23,7 +33,7 @@ higher level a villager is the more rewards they get from their duty
 bell functionality
 bell golem - when another golem enters combat or he does go ring the bell then patrol the bell and protect
 add golem limit
-snow soul golem for ranged attacks
+soul iron golem with wither rose for ranged attacks
 add raids 
 	- Illager Raids (Special Item for Enchanter)
 	- Piglin Raids ()

@@ -61,13 +61,24 @@ public class VillagerWorkerEntity extends AbstractVillager {
     // Synced so the worker GUI screen can display an up-to-date food bar.
     private static final EntityDataAccessor<Integer> DATA_FOOD =
             SynchedEntityData.defineId(VillagerWorkerEntity.class, EntityDataSerializers.INT);
+    // Synced so the GUI can display live level and XP bars.
+    private static final EntityDataAccessor<Integer> DATA_LEVEL =
+            SynchedEntityData.defineId(VillagerWorkerEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> DATA_XP =
+            SynchedEntityData.defineId(VillagerWorkerEntity.class, EntityDataSerializers.INT);
 
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(DATA_JOB,  JobType.UNEMPLOYED.name());
-        builder.define(DATA_FOOD, MAX_FOOD);
+        builder.define(DATA_JOB,   JobType.UNEMPLOYED.name());
+        builder.define(DATA_FOOD,  MAX_FOOD);
+        builder.define(DATA_LEVEL, 0);
+        builder.define(DATA_XP,    0);
     }
+
+    // ── Level / XP constants ──────────────────────────────────────────────────
+    /** Maximum worker level. */
+    public static final int MAX_LEVEL = 20;
 
     // ── Food constants ────────────────────────────────────────────────────────
     /** Maximum food level — mirrors vanilla's hunger bar scale. */
@@ -245,6 +256,75 @@ public class VillagerWorkerEntity extends AbstractVillager {
 
     /** Returns {@code true} when the worker's food is low enough to warrant fetching more. */
     public boolean needsFood() { return getFoodLevel() < EAT_THRESHOLD; }
+
+    // ── Level / XP API ────────────────────────────────────────────────────────
+
+    /** Current level (0–{@value #MAX_LEVEL}), safe to read on the client. */
+    public int getLevel() { return this.entityData.get(DATA_LEVEL); }
+
+    private void setLevel(int level) {
+        this.entityData.set(DATA_LEVEL, Mth.clamp(level, 0, MAX_LEVEL));
+    }
+
+    /** Current XP toward the next level, safe to read on the client. */
+    public int getXp() { return this.entityData.get(DATA_XP); }
+
+    private void setXp(int xp) {
+        this.entityData.set(DATA_XP, Math.max(0, xp));
+    }
+
+    /**
+     * XP needed to advance from {@code level} to {@code level + 1}.
+     * Exponential curve: 100 at level 0, ~10 000 at level 19.
+     */
+    public static int getXpForLevel(int level) {
+        if (level >= MAX_LEVEL) return Integer.MAX_VALUE;
+        return (int)(100.0 * Math.pow(10.0, level / 10.0));
+    }
+
+    /**
+     * Awards {@code amount} XP and triggers level-up(s) as needed.
+     * Capped at {@value #MAX_LEVEL}; excess XP after the final level is discarded.
+     */
+    public void gainXp(int amount) {
+        if (getLevel() >= MAX_LEVEL) return;
+        int xp = getXp() + amount;
+        while (getLevel() < MAX_LEVEL) {
+            int needed = getXpForLevel(getLevel());
+            if (xp < needed) break;
+            xp -= needed;
+            setLevel(getLevel() + 1);
+        }
+        setXp(getLevel() >= MAX_LEVEL ? 0 : xp);
+    }
+
+    /**
+     * Number of arm-swing animations required before a single work action fires.
+     *
+     * <p>Exponential curve — 10 swings at level 0, 1 swing at level 20:
+     * {@code round(10^((20 − level) / 20))}.
+     *
+     * <table>
+     *   <tr><th>level</th><th>swings</th></tr>
+     *   <tr><td>0</td><td>10</td></tr>
+     *   <tr><td>5</td><td>6</td></tr>
+     *   <tr><td>10</td><td>3</td></tr>
+     *   <tr><td>15</td><td>2</td></tr>
+     *   <tr><td>20</td><td>1</td></tr>
+     * </table>
+     */
+    public int getWorkSwings() {
+        int lvl = getLevel();
+        return Math.max(1, (int) Math.round(Math.pow(10.0, (20 - lvl) / 20.0)));
+    }
+
+    /**
+     * Chance (0.0–0.2) that the farmer accidentally destroys farmland while harvesting.
+     * Linear: 20 % at level 0, 0 % at level 20.
+     */
+    public float getFarmlandDestroyChance() {
+        return 0.20f * (20 - getLevel()) / 20.0f;
+    }
 
     // ── Server tick ───────────────────────────────────────────────────────────
 
@@ -474,6 +554,10 @@ public class VillagerWorkerEntity extends AbstractVillager {
         tag.putInt("FoodLevel",     getFoodLevel());
         tag.putInt("FoodDrainTimer", foodDrainTimer);
 
+        // Level / XP
+        tag.putInt("WorkerLevel", getLevel());
+        tag.putInt("WorkerXp",    getXp());
+
         // Smith state
         tag.putInt("SmithCraftingState", smithCraftingState);
         tag.putInt("SmithCraftingTimer", smithCraftingTimer);
@@ -536,6 +620,10 @@ public class VillagerWorkerEntity extends AbstractVillager {
         // Food
         setFoodLevel(tag.contains("FoodLevel") ? tag.getInt("FoodLevel") : MAX_FOOD);
         foodDrainTimer = tag.contains("FoodDrainTimer") ? tag.getInt("FoodDrainTimer") : FOOD_DRAIN_INTERVAL;
+
+        // Level / XP
+        setLevel(tag.contains("WorkerLevel") ? tag.getInt("WorkerLevel") : 0);
+        setXp   (tag.contains("WorkerXp")    ? tag.getInt("WorkerXp")    : 0);
 
         // Smith state
         smithCraftingState = tag.getInt("SmithCraftingState");

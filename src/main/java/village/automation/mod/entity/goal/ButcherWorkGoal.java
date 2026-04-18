@@ -220,6 +220,7 @@ public class ButcherWorkGoal extends Goal {
 
         // Mob-attack damage triggers normal loot tables
         targetAnimal.hurt(level.damageSources().mobAttack(keeper), Float.MAX_VALUE);
+        keeper.gainXp(5);
         targetAnimal = null;
 
         killTimer = KILL_WAIT;   // brief pause before sweeping drops

@@ -116,9 +116,9 @@ public class ChefWorkGoal extends Goal {
                 return;
             }
 
-            // Ingredient available — start cooking
+            // Ingredient available — start cooking (duration scales with level)
             cooking.setNeedsIngredients(false);
-            cookTimer        = COOK_TICKS;
+            cookTimer        = COOK_TICKS * chef.getWorkSwings();
             particleCooldown = PARTICLE_INTERVAL;
 
         } else {
@@ -140,6 +140,7 @@ public class ChefWorkGoal extends Goal {
                 }
                 if (currentIngredient != null && consumeIngredient(currentIngredient, cooking.getInputContainer())) {
                     produceOutput(currentIngredient, cooking.getOutputContainer());
+                    chef.gainXp(10);
                 }
                 currentIngredient = null; // reset so next tick re-evaluates
             }
