@@ -320,6 +320,11 @@ public class VillageMod {
     public static final DeferredItem<Item> SOUL_EYE =
             ITEMS.registerSimpleItem("soul_eye", new Item.Properties().stacksTo(16));
 
+    // ── Soul Infused Redstone ─────────────────────────────────────────────────
+    // Used to upgrade a Copper Soul Golem into the Redstone Copper Soul Golem variant
+    public static final DeferredItem<Item> SOUL_INFUSED_REDSTONE =
+            ITEMS.registerSimpleItem("soul_infused_redstone", new Item.Properties().stacksTo(16));
+
     // ── Dev: Level-Up Orb ────────────────────────────────────────────────────
     public static final DeferredItem<DevLevelUpItem> DEV_LEVEL_UP =
             ITEMS.register("dev_level_up",
@@ -431,6 +436,7 @@ public class VillageMod {
                         output.accept(VILLAGE_WAND.get());
                         output.accept(VILLAGER_SOUL.get());
                         output.accept(SOUL_EYE.get());
+                        output.accept(SOUL_INFUSED_REDSTONE.get());
                         output.accept(VILLAGE_UPGRADE.get());
                         output.accept(VILLAGE_UPGRADE_II.get());
                         output.accept(VILLAGE_UPGRADE_III.get());

@@ -14,8 +14,10 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -55,6 +57,10 @@ public class CourierEntity extends PathfinderMob {
 
     /** True once the courier has been upgraded with a Soul Eye. Synced so the renderer can swap the texture. */
     private static final EntityDataAccessor<Boolean> DATA_ENDER =
+            SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.BOOLEAN);
+
+    /** True once the courier has been upgraded with Soul Infused Redstone. Synced so the renderer can swap the texture. */
+    private static final EntityDataAccessor<Boolean> DATA_REDSTONE =
             SynchedEntityData.defineId(CourierEntity.class, EntityDataSerializers.BOOLEAN);
 
     /** Remaining ticks until the next ender teleport, synced to clients for the GUI progress bar. */
@@ -106,6 +112,7 @@ public class CourierEntity extends PathfinderMob {
         builder.define(DATA_DISPLAY_ITEM, ItemStack.EMPTY);
         builder.define(DATA_TASK, "Idle");
         builder.define(DATA_ENDER, false);
+        builder.define(DATA_REDSTONE, false);
         builder.define(DATA_ENDER_COOLDOWN, ENDER_TELEPORT_INTERVAL);
         builder.define(DATA_HONEY_LEVEL, 0);
     }
@@ -121,8 +128,15 @@ public class CourierEntity extends PathfinderMob {
     public void setCurrentTask(String task) { entityData.set(DATA_TASK, task); }
 
     /** True when the courier has been upgraded into the Ender Soul Copper Golem variant. */
-    public boolean isEnderVariant() { return entityData.get(DATA_ENDER); }
+    public boolean isEnderVariant()    { return entityData.get(DATA_ENDER); }
     public void setEnderVariant(boolean v) { entityData.set(DATA_ENDER, v); }
+
+    /** True when the courier has been upgraded into the Redstone Copper Soul Golem variant. */
+    public boolean isRedstoneVariant() { return entityData.get(DATA_REDSTONE); }
+    public void setRedstoneVariant(boolean v) { entityData.set(DATA_REDSTONE, v); }
+
+    /** True if any upgrade has been applied (only one upgrade allowed at a time). */
+    public boolean hasUpgrade() { return isEnderVariant() || isRedstoneVariant(); }
 
     /** Remaining ticks until the next ender teleport (client-readable). */
     public int getEnderTeleportCooldown() { return entityData.get(DATA_ENDER_COOLDOWN); }
@@ -138,9 +152,9 @@ public class CourierEntity extends PathfinderMob {
 
     @Override
     public net.minecraft.network.chat.Component getDisplayName() {
-        return isEnderVariant()
-                ? net.minecraft.network.chat.Component.translatable("entity.colonycraft.courier_ender")
-                : super.getDisplayName();
+        if (isEnderVariant())    return net.minecraft.network.chat.Component.translatable("entity.colonycraft.courier_ender");
+        if (isRedstoneVariant()) return net.minecraft.network.chat.Component.translatable("entity.colonycraft.courier_redstone");
+        return super.getDisplayName();
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -148,6 +162,12 @@ public class CourierEntity extends PathfinderMob {
                 .add(Attributes.MAX_HEALTH, 20.0)
                 .add(Attributes.MOVEMENT_SPEED, 0.24)   // 40 % of original 0.6
                 .add(Attributes.FOLLOW_RANGE, 64.0);
+    }
+
+    /** Positions passengers above the courier's head so the animal appears to be carried overhead. */
+    @Override
+    public Vec3 getPassengerRidingPosition(Entity passenger) {
+        return this.position().add(0.0, this.getBbHeight() + 0.1, 0.0);
     }
 
     @Override
@@ -168,18 +188,31 @@ public class CourierEntity extends PathfinderMob {
 
     @Override
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
-        // Crouch + Soul Eye → upgrade to Ender Soul Copper Golem
+        // Crouch + upgrade item → apply golem upgrade (only one upgrade allowed at a time)
         if (player.isShiftKeyDown()) {
             ItemStack held = player.getItemInHand(hand);
             if (held.is(VillageMod.SOUL_EYE.get())) {
                 if (!this.level().isClientSide()) {
-                    if (!isEnderVariant()) {
+                    if (!hasUpgrade()) {
                         setEnderVariant(true);
                         if (!player.getAbilities().instabuild) held.shrink(1);
                         this.level().playSound(null,
                                 this.getX(), this.getY(), this.getZ(),
                                 SoundEvents.ENDERMAN_TELEPORT,
                                 this.getSoundSource(), 1.0f, 1.0f);
+                    }
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide());
+            }
+            if (held.is(VillageMod.SOUL_INFUSED_REDSTONE.get())) {
+                if (!this.level().isClientSide()) {
+                    if (!hasUpgrade()) {
+                        setRedstoneVariant(true);
+                        if (!player.getAbilities().instabuild) held.shrink(1);
+                        this.level().playSound(null,
+                                this.getX(), this.getY(), this.getZ(),
+                                SoundEvents.AMETHYST_BLOCK_CHIME,
+                                this.getSoundSource(), 1.0f, 0.8f);
                     }
                 }
                 return InteractionResult.sidedSuccess(this.level().isClientSide());
@@ -393,6 +426,7 @@ public class CourierEntity extends PathfinderMob {
             tag.putInt("HeartZ", linkedHeartPos.getZ());
         }
         tag.putBoolean("IsEnder", isEnderVariant());
+        tag.putBoolean("IsRedstone", isRedstoneVariant());
         tag.putInt("HoneyLevel", honeyLevel);
     }
 
@@ -405,6 +439,9 @@ public class CourierEntity extends PathfinderMob {
         }
         if (tag.contains("IsEnder")) {
             setEnderVariant(tag.getBoolean("IsEnder"));
+        }
+        if (tag.contains("IsRedstone")) {
+            setRedstoneVariant(tag.getBoolean("IsRedstone"));
         }
         if (tag.contains("HoneyLevel")) {
             honeyLevel = tag.getInt("HoneyLevel");
