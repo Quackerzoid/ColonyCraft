@@ -15,6 +15,8 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.TieredItem;
+import net.minecraft.world.item.Tiers;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import village.automation.mod.ItemRequest;
@@ -320,9 +322,9 @@ public class LumberjackWorkGoal extends Goal {
             }
         }
 
-        // Deposit loot into worker inventory
+        // Deposit loot into worker inventory (log count scaled by axe tier)
         SimpleContainer inv = lumberjack.getWorkerInventory();
-        depositToInventory(inv, new ItemStack(logItem, logCount));
+        depositToInventory(inv, new ItemStack(logItem, applyAxeMultiplier(logCount)));
 
         int sticks   = 3 + lumberjack.getRandom().nextInt(3);          // 3–5
         int saplings = 1 + lumberjack.getRandom().nextInt(4);          // 1–4
@@ -491,6 +493,25 @@ public class LumberjackWorkGoal extends Goal {
 
     private boolean hasAxeEquipped() {
         return lumberjack.getToolContainer().getItem(0).getItem() instanceof AxeItem;
+    }
+
+    /**
+     * Scales a raw log count by axe tier:
+     * Wood 50 %, Stone 75 %, Iron/Gold 100 %, Diamond 150 %, Netherite 200 %.
+     */
+    private int applyAxeMultiplier(int rawCount) {
+        ItemStack tool = lumberjack.getToolContainer().getItem(0);
+        if (!(tool.getItem() instanceof TieredItem tiered)) return rawCount;
+        double mult;
+        var tier = tiered.getTier();
+        if      (tier == Tiers.WOOD)      mult = 0.50;
+        else if (tier == Tiers.STONE)     mult = 0.75;
+        else if (tier == Tiers.GOLD)      mult = 1.00;
+        else if (tier == Tiers.IRON)      mult = 1.00;
+        else if (tier == Tiers.DIAMOND)   mult = 1.50;
+        else if (tier == Tiers.NETHERITE) mult = 2.00;
+        else                              mult = 1.00;
+        return Math.max(1, (int) Math.round(rawCount * mult));
     }
 
     // ── Inventory helpers ─────────────────────────────────────────────────────

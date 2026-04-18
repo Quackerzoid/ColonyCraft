@@ -43,6 +43,8 @@
   "entity.colonycraft.courier_ender": "Ender Copper Golem",
   "entity.colonycraft.soul_iron_golem": "Soul Iron Golem",
   "item.colonycraft.soul_eye": "Soul Eye",
+  "item.colonycraft.soul_infused_redstone": "Soul Infused Redstone",
+  "entity.colonycraft.courier_redstone": "Redstone Copper Soul Golem",
   "entity.colonycraft.villager_worker": "Villager Worker",
   "container.colonycraft.villager_worker": "Villager Worker",
   "item.colonycraft.villager_worker_spawn_egg": "Villager Worker Spawn Egg",

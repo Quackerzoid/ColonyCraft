@@ -42,8 +42,11 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.DeferredBlock;
@@ -320,6 +323,11 @@ public class VillageMod {
     public static final DeferredItem<Item> SOUL_EYE =
             ITEMS.registerSimpleItem("soul_eye", new Item.Properties().stacksTo(16));
 
+    // ── Soul Infused Redstone ─────────────────────────────────────────────────
+    // Used to upgrade a Copper Soul Golem into the Redstone Copper Soul Golem variant
+    public static final DeferredItem<Item> SOUL_INFUSED_REDSTONE =
+            ITEMS.registerSimpleItem("soul_infused_redstone", new Item.Properties().stacksTo(16));
+
     // ── Dev: Level-Up Orb ────────────────────────────────────────────────────
     public static final DeferredItem<DevLevelUpItem> DEV_LEVEL_UP =
             ITEMS.register("dev_level_up",
@@ -431,6 +439,7 @@ public class VillageMod {
                         output.accept(VILLAGE_WAND.get());
                         output.accept(VILLAGER_SOUL.get());
                         output.accept(SOUL_EYE.get());
+                        output.accept(SOUL_INFUSED_REDSTONE.get());
                         output.accept(VILLAGE_UPGRADE.get());
                         output.accept(VILLAGE_UPGRADE_II.get());
                         output.accept(VILLAGE_UPGRADE_III.get());
@@ -582,6 +591,21 @@ public class VillageMod {
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         LOGGER.info("HELLO from server starting");
+    }
+
+    /**
+     * When a player right-clicks a bell, all VillagerWorkerEntities within
+     * 64 blocks are told to rally at that bell for 30 seconds.
+     */
+    @SubscribeEvent
+    public void onBellRing(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getLevel().isClientSide()) return;
+        BlockPos pos = event.getPos();
+        if (!event.getLevel().getBlockState(pos).is(Blocks.BELL)) return;
+        ServerLevel level = (ServerLevel) event.getLevel();
+        AABB searchBox = new AABB(pos).inflate(64, 16, 64);
+        level.getEntitiesOfClass(VillagerWorkerEntity.class, searchBox, e -> e.isAlive())
+             .forEach(w -> w.startBellRally(pos));
     }
 
     /**

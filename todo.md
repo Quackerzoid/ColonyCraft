@@ -18,16 +18,17 @@ Farmer has an exponential curve of swing amount of 10 to 1 when he hits 20 but h
 - Skill curve implemented:
 Blacksmith
 Chef
-
-- Skill curve todo:
-butcher
-animal keeper
 beekeeper
 miner
 lumberjack
 fisherman
 smelter
 farmer
+
+- Skill curve todo:
+butcher
+animal keeper
+
 
 
 

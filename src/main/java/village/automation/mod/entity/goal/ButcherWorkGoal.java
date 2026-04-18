@@ -65,13 +65,14 @@ public class ButcherWorkGoal extends Goal {
     /** Radius used to count nearby same-species adults. */
     private static final int    GROUP_RADIUS      = 16;
 
-    private enum Phase { APPROACH_ANIMAL, LEASH_ANIMAL, LEAD_HOME, KILL_ANIMAL, COLLECT_DROPS }
+    private enum Phase { APPROACH_ANIMAL, LEASH_ANIMAL, LEAD_HOME, KILL_ANIMAL, COLLECT_DROPS, WAIT_AT_BLOCK }
 
     // ── State ─────────────────────────────────────────────────────────────────
     private final VillagerWorkerEntity keeper;
-    private Phase   phase        = Phase.APPROACH_ANIMAL;
-    private int     navRetry     = 0;
-    private int     killTimer    = 0;
+    private Phase   phase              = Phase.APPROACH_ANIMAL;
+    private boolean redstoneCourierMode = false;
+    private int     navRetry           = 0;
+    private int     killTimer          = 0;
     @Nullable private Animal   targetAnimal = null;
     @Nullable private BlockPos killPos      = null;
 
@@ -86,12 +87,14 @@ public class ButcherWorkGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        return keeper.getJob() == JobType.BUTCHER
-                && !keeper.isTooHungryToWork()
-                && !keeper.level().isClientSide()
-                && hasSword()
-                && findBlockEntity() != null
-                && findValidTarget() != null;
+        if (keeper.getJob() != JobType.BUTCHER) return false;
+        if (keeper.isTooHungryToWork()) return false;
+        if (keeper.level().isClientSide()) return false;
+        if (!hasSword()) return false;
+        if (findBlockEntity() == null) return false;
+        // With a redstone courier present the butcher waits at the block for deliveries
+        if (keeper.level() instanceof ServerLevel sl && hasRedstoneCourier(sl)) return true;
+        return findValidTarget() != null;
     }
 
     @Override
@@ -106,15 +109,22 @@ public class ButcherWorkGoal extends Goal {
 
     @Override
     public void start() {
-        phase        = Phase.APPROACH_ANIMAL;
-        navRetry     = 0;
-        killTimer    = 0;
-        killPos      = null;
-        targetAnimal = findValidTarget();
-        if (targetAnimal != null) {
-            navigateTo(targetAnimal.getX(), targetAnimal.getY(), targetAnimal.getZ());
-        }
+        navRetry  = 0;
+        killTimer = 0;
+        killPos   = null;
         equipSword();
+        redstoneCourierMode = keeper.level() instanceof ServerLevel sl && hasRedstoneCourier(sl);
+        if (redstoneCourierMode) {
+            phase = Phase.WAIT_AT_BLOCK;
+            ButcherBlockEntity be = findBlockEntity();
+            if (be != null) navigateToBlock(be);
+        } else {
+            phase        = Phase.APPROACH_ANIMAL;
+            targetAnimal = findValidTarget();
+            if (targetAnimal != null) {
+                navigateTo(targetAnimal.getX(), targetAnimal.getY(), targetAnimal.getZ());
+            }
+        }
     }
 
     @Override
@@ -146,6 +156,7 @@ public class ButcherWorkGoal extends Goal {
             case LEAD_HOME       -> tickLeadHome(be);
             case KILL_ANIMAL     -> tickKillAnimal(level);
             case COLLECT_DROPS   -> tickCollectDrops(level, be);
+            case WAIT_AT_BLOCK   -> tickWaitAtBlock(level, be);
         }
     }
 
@@ -229,7 +240,10 @@ public class ButcherWorkGoal extends Goal {
 
     private void tickCollectDrops(ServerLevel level, ButcherBlockEntity be) {
         if (--killTimer > 0) return;
-        if (killPos == null) { phase = Phase.APPROACH_ANIMAL; return; }
+        if (killPos == null) {
+            phase = redstoneCourierMode ? Phase.WAIT_AT_BLOCK : Phase.APPROACH_ANIMAL;
+            return;
+        }
 
         AABB sweepBox = new AABB(killPos).inflate(4.0, 2.0, 4.0);
         List<ItemEntity> drops = level.getEntitiesOfClass(ItemEntity.class, sweepBox,
@@ -243,8 +257,43 @@ public class ButcherWorkGoal extends Goal {
         }
 
         killPos  = null;
-        phase    = Phase.APPROACH_ANIMAL;
         navRetry = 0;
+        if (redstoneCourierMode) {
+            phase = Phase.WAIT_AT_BLOCK;
+            navigateToBlock(be);
+        } else {
+            phase = Phase.APPROACH_ANIMAL;
+        }
+    }
+
+    // ── Wait-at-block (redstone courier mode) ─────────────────────────────────
+
+    /**
+     * Butcher stands at its block and kills any adult animal the redstone courier
+     * drops nearby, then collects the drops.
+     */
+    private void tickWaitAtBlock(ServerLevel level, ButcherBlockEntity be) {
+        // Drift back to the block if knocked away
+        if (++navRetry >= NAV_RETRY) {
+            navRetry = 0;
+            navigateToBlock(be);
+        }
+        keeper.getLookControl().setLookAt(
+                be.getBlockPos().getX() + 0.5,
+                be.getBlockPos().getY() + 0.5,
+                be.getBlockPos().getZ() + 0.5, 30f, 30f);
+
+        // Scan for any delivered animal within kill range
+        BlockPos bp = be.getBlockPos();
+        AABB killBox = new AABB(bp).inflate(6.0, 4.0, 6.0);
+        List<Animal> nearby = level.getEntitiesOfClass(Animal.class, killBox,
+                a -> a.isAlive() && !a.isBaby() && !(a instanceof Bee));
+        if (!nearby.isEmpty()) {
+            targetAnimal = nearby.get(0);
+            keeper.getLookControl().setLookAt(targetAnimal, 30f, 30f);
+            killTimer = KILL_WAIT;
+            phase = Phase.KILL_ANIMAL;
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -313,6 +362,13 @@ public class ButcherWorkGoal extends Goal {
             }
         }
         return stack.isEmpty();
+    }
+
+    private boolean hasRedstoneCourier(ServerLevel level) {
+        var heartResult = VillageHeartBlockEntity.findClaimingHeart(level, keeper.blockPosition(), null);
+        if (heartResult.isEmpty()) return false;
+        var be = level.getBlockEntity(heartResult.get());
+        return be instanceof VillageHeartBlockEntity heart && heart.hasRedstoneCourier(level);
     }
 
     @Nullable

@@ -45,8 +45,8 @@ import java.util.UUID;
 public class LumbermillBlockEntity extends WorkplaceBlockEntityBase {
 
     // ── Tuning ────────────────────────────────────────────────────────────────
-    /** Fixed chop duration — 30 s regardless of axe tier. */
-    public static final int CHOP_INTERVAL = 600;
+    /** Default chop interval (level 1 = 60 s). Overridden each tick by worker level. */
+    public static final int CHOP_INTERVAL = 1200;
 
     // ── Output inventory (3×3) ────────────────────────────────────────────────
     private final SimpleContainer outputContainer = new SimpleContainer(9);
@@ -142,6 +142,12 @@ public class LumbermillBlockEntity extends WorkplaceBlockEntityBase {
                                   LumbermillBlockEntity be) {
         VillagerWorkerEntity worker = be.getActiveWorker(level);
         if (worker == null) return;
+
+        int newInterval = worker.getLumberjackChopTicks();
+        if (newInterval != be.chopInterval) {
+            be.chopInterval = newInterval;
+            if (be.chopTimer > be.chopInterval) be.chopTimer = be.chopInterval;
+        }
 
         be.chopTimer--;
         if (be.chopTimer <= 0) {

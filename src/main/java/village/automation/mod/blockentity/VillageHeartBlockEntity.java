@@ -24,6 +24,7 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import village.automation.mod.ItemRequest;
 import village.automation.mod.VillageMod;
 import village.automation.mod.entity.CourierDispatcher;
+import village.automation.mod.entity.CourierEntity;
 import village.automation.mod.entity.JobType;
 import village.automation.mod.entity.VillagerWorkerEntity;
 import village.automation.mod.menu.VillageHeartMenu;
@@ -499,6 +500,15 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     public SimpleContainer getInputContainer()   { return inputContainer;    }
     public SimpleContainer getUpgradeInputSlot() { return upgradeInputSlot; }
     public Set<UUID> getCourierUUIDs()           { return Collections.unmodifiableSet(courierUUIDs); }
+
+    /** Returns {@code true} if at least one living redstone-variant courier is linked to this heart. */
+    public boolean hasRedstoneCourier(ServerLevel level) {
+        for (UUID uuid : courierUUIDs) {
+            Entity e = level.getEntity(uuid);
+            if (e instanceof CourierEntity c && c.isAlive() && c.isRedstoneVariant()) return true;
+        }
+        return false;
+    }
 
     // ── MenuProvider ──────────────────────────────────────────────────────────
 

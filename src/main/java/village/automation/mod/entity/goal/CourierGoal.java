@@ -8,6 +8,8 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -35,6 +37,7 @@ import village.automation.mod.entity.SmithRecipe;
 import village.automation.mod.entity.VillagerWorkerEntity;
 
 import javax.annotation.Nullable;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -89,7 +92,11 @@ public class CourierGoal extends Goal {
         /** Leisurely stroll within the village bounds when truly idle. */
         WANDER,
         /** Carrying a poppy to a Soul Iron Golem to grant it Strength II. */
-        DELIVER_POPPY
+        DELIVER_POPPY,
+        /** Navigating to a target animal to mount and carry it (redstone courier only). */
+        FETCH_ANIMAL,
+        /** Carrying a mounted animal to the butcher block (redstone courier only). */
+        DELIVER_ANIMAL_TO_BUTCHER
     }
 
     private final CourierEntity courier;
@@ -124,6 +131,11 @@ public class CourierGoal extends Goal {
     @Nullable private BlockPos targetBeekeeperPos   = null;
     /** UUID of a SoulIronGolemEntity the courier is delivering iron or a poppy to. */
     @Nullable private java.util.UUID targetGolemUUID = null;
+
+    /** Animal being lifted and transported to the butcher block (redstone courier only). */
+    @Nullable private Animal   targetAnimalForButcher = null;
+    /** Butcher block to deliver the carried animal to (redstone courier only). */
+    @Nullable private BlockPos targetButcherBlockPos  = null;
 
     /** Total ticks spent in IDLE phase since last task — drives the wander trigger. */
     private int totalIdleTicks = 0;
@@ -189,6 +201,8 @@ public class CourierGoal extends Goal {
             case PICKUP_HONEY_FROM_BEEKEEPER -> tickPickupHoneyFromBeekeeper(level);
             case WANDER                      -> tickWander(level);
             case DELIVER_POPPY               -> tickDeliverPoppy(level);
+            case FETCH_ANIMAL                -> tickFetchAnimal(level);
+            case DELIVER_ANIMAL_TO_BUTCHER   -> tickDeliverAnimalToButcher(level);
         }
     }
 
@@ -201,6 +215,9 @@ public class CourierGoal extends Goal {
         // Rate-limit idle checks to every 20 ticks
         if (++idleTick < 20) return;
         idleTick = 0;
+
+        // ── Animal delivery (redstone couriers: highest priority of all) ─────
+        if (courier.isRedstoneVariant() && tryStartAnimalDelivery(level)) return;
 
         // ── REQUESTS (highest priority) ──────────────────────────────────────
         if (tryStartDirectDelivery(level)) return;
@@ -1517,6 +1534,117 @@ public class CourierGoal extends Goal {
         resetToIdle();
     }
 
+    // ── Animal delivery (redstone courier only) ───────────────────────────────
+
+    /**
+     * Finds a linked butcher block and a qualifying animal, then starts the
+     * FETCH_ANIMAL leg.  Returns {@code true} if a task was started.
+     */
+    private boolean tryStartAnimalDelivery(ServerLevel level) {
+        if (courier.isCarryingAnything()) return false;
+        VillageHeartBlockEntity heart = getHeart(level);
+        if (heart == null) return false;
+
+        BlockPos butcherPos = null;
+        for (BlockPos workPos : heart.getLinkedWorkplaces()) {
+            if (level.getBlockEntity(workPos) instanceof ButcherBlockEntity) {
+                butcherPos = workPos;
+                break;
+            }
+        }
+        if (butcherPos == null) return false;
+
+        Animal animal = findAnimalForButcher(level, heart);
+        if (animal == null) return false;
+
+        targetAnimalForButcher = animal;
+        targetButcherBlockPos  = butcherPos;
+        courier.setCurrentTask("Fetching animal");
+        navigateTo(animal.blockPosition());
+        navTimeout = NAV_TIMEOUT;
+        phase = Phase.FETCH_ANIMAL;
+        return true;
+    }
+
+    private void tickFetchAnimal(ServerLevel level) {
+        if (targetAnimalForButcher == null || !targetAnimalForButcher.isAlive()) {
+            targetAnimalForButcher = null;
+            targetButcherBlockPos  = null;
+            resetToIdle();
+            return;
+        }
+        if (courier.getNavigation().isDone()) {
+            navigateTo(targetAnimalForButcher.blockPosition());
+        }
+        if (courier.distanceToSqr(targetAnimalForButcher) <= REACH_SQ) {
+            // Suppress the animal's own AI so it doesn't wander off; do NOT use
+            // startRiding — mounting triggers a pathfinder height recalculation that
+            // prevents the courier from finding a valid path and stops it dead.
+            targetAnimalForButcher.setNoAi(true);
+            courier.setCurrentTask("Carrying animal");
+            if (targetButcherBlockPos != null) navigateTo(targetButcherBlockPos);
+            navTimeout = NAV_TIMEOUT * 2;
+            phase = Phase.DELIVER_ANIMAL_TO_BUTCHER;
+        }
+    }
+
+    private void tickDeliverAnimalToButcher(ServerLevel level) {
+        if (targetAnimalForButcher == null || !targetAnimalForButcher.isAlive()) {
+            if (targetAnimalForButcher != null) targetAnimalForButcher.setNoAi(false);
+            targetAnimalForButcher = null;
+            targetButcherBlockPos  = null;
+            resetToIdle();
+            return;
+        }
+        if (targetButcherBlockPos == null) { resetToIdle(); return; }
+
+        // Pin the animal above the courier's head every tick — this is the
+        // "carrying" visual. Using setPos instead of startRiding avoids the
+        // pathfinder height-recalculation that would stop the courier moving.
+        targetAnimalForButcher.setPos(
+                courier.getX(),
+                courier.getY() + courier.getBbHeight() + 0.1,
+                courier.getZ());
+        targetAnimalForButcher.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+
+        // Re-path regularly so any incidental navigation interruption is recovered quickly
+        if (courier.getNavigation().isDone() || courier.tickCount % 20 == 0) {
+            navigateTo(targetButcherBlockPos);
+        }
+
+        if (distSqTo(targetButcherBlockPos) <= REACH_SQ) {
+            targetAnimalForButcher.setNoAi(false);
+            BlockPos bp = targetButcherBlockPos;
+            targetAnimalForButcher.teleportTo(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            targetAnimalForButcher = null;
+            targetButcherBlockPos  = null;
+            resetToIdle();
+        }
+    }
+
+    /**
+     * Scans the village for an adult animal whose species has at least 3 adults
+     * within 16 blocks — the same trigger threshold the butcher uses.
+     */
+    @Nullable
+    private Animal findAnimalForButcher(ServerLevel level, VillageHeartBlockEntity heart) {
+        BlockPos centre = heart.getBlockPos();
+        AABB searchBox = new AABB(centre).inflate(64, 16, 64);
+        List<Animal> candidates = level.getEntitiesOfClass(Animal.class, searchBox,
+                a -> a.isAlive() && !a.isBaby() && !(a instanceof Bee));
+        if (candidates.isEmpty()) return null;
+
+        candidates.sort(Comparator.comparingDouble(a -> a.distanceToSqr(courier)));
+        for (Animal candidate : candidates) {
+            long count = level.getEntitiesOfClass(
+                    candidate.getClass(),
+                    new AABB(candidate.blockPosition()).inflate(16, 8, 16),
+                    a -> a.isAlive() && !a.isBaby() && !(a instanceof Bee)).size();
+            if (count >= 3) return candidate;
+        }
+        return null;
+    }
+
     // ── Reset ─────────────────────────────────────────────────────────────────
 
     private void resetToIdle() {
@@ -1536,6 +1664,11 @@ public class CourierGoal extends Goal {
         targetAnimalPenPos       = null;
         targetBeekeeperPos       = null;
         targetGolemUUID          = null;
+        if (targetAnimalForButcher != null) {
+            targetAnimalForButcher.setNoAi(false);
+            targetAnimalForButcher = null;
+        }
+        targetButcherBlockPos    = null;
         totalIdleTicks           = 0;
         wanderCheckTick          = 0;
         wanderTarget             = null;
