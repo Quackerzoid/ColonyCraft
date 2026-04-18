@@ -120,6 +120,11 @@ public class VillagerWorkerMenu extends AbstractContainerMenu {
         return VillagerWorkerEntity.getXpForLevel(lvl);
     }
 
+    /** Current happiness (0–{@value VillagerWorkerEntity#MAX_HAPPINESS}). Client-safe. */
+    public int getHappiness() {
+        return entity != null ? entity.getHappiness() : VillagerWorkerEntity.MAX_HAPPINESS / 2;
+    }
+
     @Override
     public boolean stillValid(Player player) {
         return this.entity == null || (this.entity.isAlive() && player.distanceToSqr(this.entity) < 64.0);

@@ -65,6 +65,7 @@ public class ChefWorkGoal extends Goal {
         return chef.getJob() == JobType.CHEF
                 && chef.getWorkplacePos() != null
                 && !chef.isTooHungryToWork()
+                && !chef.isTooUnhappyToWork()
                 && chef.level() instanceof ServerLevel;
     }
 

@@ -89,6 +89,7 @@ public class ButcherWorkGoal extends Goal {
     public boolean canUse() {
         if (keeper.getJob() != JobType.BUTCHER) return false;
         if (keeper.isTooHungryToWork()) return false;
+        if (keeper.isTooUnhappyToWork()) return false;
         if (keeper.level().isClientSide()) return false;
         if (!hasSword()) return false;
         if (findBlockEntity() == null) return false;
@@ -101,6 +102,7 @@ public class ButcherWorkGoal extends Goal {
     public boolean canContinueToUse() {
         return keeper.getJob() == JobType.BUTCHER
                 && !keeper.isTooHungryToWork()
+                && !keeper.isTooUnhappyToWork()
                 && !keeper.level().isClientSide()
                 && hasSword();
     }

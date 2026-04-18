@@ -32,7 +32,22 @@
       "Bash(del \"D:\\\\neoforge mdk mod\\\\src\\\\main\\\\java\\\\village\\\\automation\\\\mod\\\\client\\\\renderer\\\\layer\\\\SmithProfessionLayer.java\")",
       "Bash(grep -E '\\\\.java$|^d')",
       "Bash(./gradlew compileJava)",
-      "Bash(find \"D:\\\\neoforge mdk mod/src/main/java/village/automation/mod/entity\" -type f -name \"*.java\" -exec basename {} \\\\;)"
+      "Bash(find \"D:\\\\neoforge mdk mod/src/main/java/village/automation/mod/entity\" -type f -name \"*.java\" -exec basename {} \\\\;)",
+      "Bash(grep -i \"\\\\.java$\")",
+      "Bash(where java *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files/Microsoft/**)",
+      "Read(//c/Users/Laurie/.jdks/**)",
+      "Read(//c/Users/Laurie/AppData/Local/Programs/**)",
+      "Bash(cd 'C:\\\\Users\\\\Laurie\\\\Documents\\\\GitHub\\\\ColonyCraft\\\\.claude\\\\worktrees\\\\stupefied-goldberg-5ad88a')",
+      "Bash(javap -classpath /c/Users/Laurie/.gradle/caches/modules-2/files-2.1/net.neoforged/neoforge/21.1.226/3f70667f7ce4460d7d8ec848a98de0a6b7f5986c/neoforge-21.1.226-userdev.jar net.minecraft.world.food.FoodProperties)",
+      "Bash(xargs -I{} sh -c 'JAVA_HOME=/c/Users/Laurie/.jdks/temurin-25.0.2 /c/Users/Laurie/.jdks/temurin-25.0.2/bin/jar tf {} 2>/dev/null | grep -q \"FoodProperties\" && echo \"Found in: {}\"')",
+      "Bash(JAVA_HOME=\"/c/Users/Laurie/.jdks/temurin-25.0.2\" /c/Users/Laurie/.jdks/temurin-25.0.2/bin/jar xf \"/c/Users/Laurie/.gradle/caches/modules-2/files-2.1/net.neoforged/neoforge/21.1.226/ef33fb8ebf21b52b381303f150bfaeb671499cdf/neoforge-21.1.226-sources.jar\")",
+      "Bash(find \"/c/Users/Laurie/Documents/GitHub/ColonyCraft/.claude/worktrees/stupefied-goldberg-5ad88a\" -name \"*.java\" -exec grep -l \"FoodProperties\\\\.\" {} \\\\;)",
+      "Bash(JAVA_HOME=\"/c/Users/Laurie/.jdks/temurin-25.0.2\" /c/Users/Laurie/.jdks/temurin-25.0.2/bin/jar tf \"/c/Users/Laurie/.gradle/caches/neoformruntime/artifacts/minecraft_1.21.1_client.jar\")",
+      "Bash(xargs -I{} sh -c 'JAVA_HOME=/c/Users/Laurie/.jdks/temurin-25.0.2 /c/Users/Laurie/.jdks/temurin-25.0.2/bin/jar tf {} 2>/dev/null | grep \"FoodProperties.class\" && echo \"-- {}\"')",
+      "Bash(JAVA_HOME=\"/c/Users/Laurie/.jdks/temurin-25.0.2\" /c/Users/Laurie/.jdks/temurin-25.0.2/bin/jar tf \"/c/Users/Laurie/.gradle/caches/neoformruntime/intermediate_results/compiledWithNeoForge_1d0cb89f90066c8db0de912686cb16a03f9b9b75_output.jar\")",
+      "Bash(JAVA_HOME=\"/c/Users/Laurie/.jdks/temurin-25.0.2\" /c/Users/Laurie/.jdks/temurin-25.0.2/bin/javap -cp \"/c/Users/Laurie/.gradle/caches/neoformruntime/intermediate_results/compiledWithNeoForge_1d0cb89f90066c8db0de912686cb16a03f9b9b75_output.jar\" \"net.minecraft.world.food.FoodProperties\")"
     ]
   }
 }

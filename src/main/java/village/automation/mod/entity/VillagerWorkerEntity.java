@@ -15,6 +15,10 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleContainer;
@@ -40,6 +44,7 @@ import village.automation.mod.entity.goal.FetchFoodGoal;
 import village.automation.mod.entity.goal.MinerWorkGoal;
 import village.automation.mod.entity.goal.SmithCraftGoal;
 import village.automation.mod.entity.goal.SmelterWorkGoal;
+import village.automation.mod.entity.goal.SocializeGoal;
 import village.automation.mod.entity.goal.WorkerSleepGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -54,6 +59,7 @@ import village.automation.mod.VillageMod;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.UUID;
 
 public class VillagerWorkerEntity extends AbstractVillager {
 
@@ -69,15 +75,44 @@ public class VillagerWorkerEntity extends AbstractVillager {
             SynchedEntityData.defineId(VillagerWorkerEntity.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> DATA_XP =
             SynchedEntityData.defineId(VillagerWorkerEntity.class, EntityDataSerializers.INT);
+    // Synced so the GUI can display the happiness bar.
+    private static final EntityDataAccessor<Integer> DATA_HAPPINESS =
+            SynchedEntityData.defineId(VillagerWorkerEntity.class, EntityDataSerializers.INT);
 
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(DATA_JOB,   JobType.UNEMPLOYED.name());
-        builder.define(DATA_FOOD,  MAX_FOOD);
-        builder.define(DATA_LEVEL, 0);
-        builder.define(DATA_XP,    0);
+        builder.define(DATA_JOB,       JobType.UNEMPLOYED.name());
+        builder.define(DATA_FOOD,      MAX_FOOD);
+        builder.define(DATA_LEVEL,     0);
+        builder.define(DATA_XP,        0);
+        builder.define(DATA_HAPPINESS, 75);
     }
+
+    // ── Happiness constants ───────────────────────────────────────────────────
+    public static final int MAX_HAPPINESS       = 100;
+    /** Above this → 1.2× work speed. */
+    public static final int HAPPINESS_HIGH      = 80;
+    /** Above this → 1.0× work speed (normal). */
+    public static final int HAPPINESS_NORMAL    = 50;
+    /** Below this → stop working, seek food / socialize. */
+    public static final int HAPPINESS_LOW       = 40;
+    /** Below this → 0.5× work speed, grumble, smoke. */
+    public static final int HAPPINESS_MISERABLE = 25;
+
+    private static final int HAPPINESS_DRAIN_INTERVAL      = 6000;  // 5 min passive drain
+    private static final int WORK_HAPPINESS_DRAIN_INTERVAL = 4800;  // 4 min while working
+    private static final int FLOWER_COOLDOWN_TICKS         = 6000;  // 5 min flower cooldown
+    private static final int SMOKE_PARTICLE_INTERVAL       = 40;    // 2 s when miserable
+    private static final int GRUNT_INTERVAL                = 100;   // 5 s when miserable
+
+    // ── Happiness state ───────────────────────────────────────────────────────
+    private int happinessDrainTimer     = HAPPINESS_DRAIN_INTERVAL;
+    private int workHappinessDrainTimer = WORK_HAPPINESS_DRAIN_INTERVAL;
+    private int flowerCooldown          = 0;
+    private int smokeParticleTimer      = SMOKE_PARTICLE_INTERVAL;
+    private int gruntTimer              = GRUNT_INTERVAL;
+    @Nullable private UUID lastSocializedWithUUID = null;
 
     // ── Level / XP constants ──────────────────────────────────────────────────
     /** Maximum worker level. */
@@ -254,6 +289,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         this.goalSelector.addGoal(0, new OpenNearbyDoorsGoal(this, true));
         this.goalSelector.addGoal(0, new BellRallyGoal(this));
         this.goalSelector.addGoal(1, new WorkerSleepGoal(this));
+        this.goalSelector.addGoal(2, new SocializeGoal(this));
         this.goalSelector.addGoal(2, new FetchFoodGoal(this));
         this.goalSelector.addGoal(2, new FarmerWorkGoal(this));
         this.goalSelector.addGoal(2, new MinerWorkGoal(this));
@@ -287,6 +323,37 @@ public class VillagerWorkerEntity extends AbstractVillager {
 
     /** Returns {@code true} when the worker's food is low enough to warrant fetching more. */
     public boolean needsFood() { return getFoodLevel() < EAT_THRESHOLD; }
+
+    // ── Happiness API ─────────────────────────────────────────────────────────
+
+    /** Current happiness (0–{@value #MAX_HAPPINESS}), safe to read on the client. */
+    public int getHappiness() { return this.entityData.get(DATA_HAPPINESS); }
+
+    private void setHappiness(int h) {
+        this.entityData.set(DATA_HAPPINESS, Mth.clamp(h, 0, MAX_HAPPINESS));
+    }
+
+    public void modifyHappiness(int delta) { setHappiness(getHappiness() + delta); }
+
+    /** True when happiness is too low to work; work goals gate on this. */
+    public boolean isTooUnhappyToWork() { return getHappiness() < HAPPINESS_LOW; }
+
+    /**
+     * Work-speed multiplier based on happiness.
+     * >80 → 1.2×, >50 → 1.0×, ≥25 → 0.75×, <25 → 0.5×
+     */
+    public float getHappinessSpeedMultiplier() {
+        int h = getHappiness();
+        if (h > HAPPINESS_HIGH)    return 1.2f;
+        if (h > HAPPINESS_NORMAL)  return 1.0f;
+        if (h >= HAPPINESS_MISERABLE) return 0.75f;
+        return 0.5f;
+    }
+
+    public boolean hasFlowerCooldown() { return flowerCooldown > 0; }
+
+    @Nullable public UUID getLastSocializedWith() { return lastSocializedWithUUID; }
+    public void setLastSocializedWith(@Nullable UUID uuid) { lastSocializedWithUUID = uuid; }
 
     // ── Level / XP API ────────────────────────────────────────────────────────
 
@@ -354,7 +421,8 @@ public class VillagerWorkerEntity extends AbstractVillager {
      */
     public int getWorkSwings() {
         int lvl = getLevel();
-        return Math.max(1, (int) Math.round(Math.pow(10.0, (20 - lvl) / 20.0)));
+        int base = Math.max(1, (int) Math.round(Math.pow(10.0, (20 - lvl) / 20.0)));
+        return Math.max(1, (int)(base / getHappinessSpeedMultiplier()));
     }
 
     /**
@@ -370,37 +438,37 @@ public class VillagerWorkerEntity extends AbstractVillager {
 
     /** Ticks the blacksmith needs to complete one craft (60 s → 5 s over levels 1–20). */
     public int getSmithCraftTicks() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /** Ticks the chef needs to cook one item (60 s → 5 s over levels 1–20). */
     public int getChefCookTicks() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /** Ticks the beekeeper needs to complete one smoking cycle (60 s → 5 s over levels 1–20). */
     public int getBeekeeperSmokeTicks() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /** Ticks between mine drops for the miner (60 s → 5 s over levels 1–20). */
     public int getMinerMineInterval() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /** Ticks per fishing catch for the fisherman (60 s → 5 s over levels 1–20). */
     public int getFishermanFishTicks() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /** Ticks per tree chop for the lumberjack (60 s → 5 s over levels 1–20). */
     public int getLumberjackChopTicks() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /** Ticks per smelt operation for the smelter (60 s → 5 s over levels 1–20). */
     public int getSmelterSmeltTicks() {
-        return levelScaledTicks(1200, 100);
+        return Math.max(20, (int)(levelScaledTicks(1200, 100) / getHappinessSpeedMultiplier()));
     }
 
     /**
@@ -418,6 +486,7 @@ public class VillagerWorkerEntity extends AbstractVillager {
         super.tick();
         if (this.level().isClientSide()) return;
         tickFood();
+        tickHappiness();
     }
 
     /**
@@ -461,6 +530,50 @@ public class VillagerWorkerEntity extends AbstractVillager {
     }
 
     /**
+     * Drains happiness over time and triggers miserable visual/audio effects
+     * when happiness drops below {@value #HAPPINESS_MISERABLE}.
+     */
+    private void tickHappiness() {
+        // Passive drain
+        if (--happinessDrainTimer <= 0) {
+            happinessDrainTimer = HAPPINESS_DRAIN_INTERVAL;
+            modifyHappiness(-1);
+        }
+
+        // Extra drain while actively working
+        boolean isWorking = miningActive || choppingActive || fishingActive;
+        if (isWorking) {
+            if (--workHappinessDrainTimer <= 0) {
+                workHappinessDrainTimer = WORK_HAPPINESS_DRAIN_INTERVAL;
+                modifyHappiness(-1);
+            }
+        } else {
+            workHappinessDrainTimer = WORK_HAPPINESS_DRAIN_INTERVAL;
+        }
+
+        // Flower cooldown tick
+        if (flowerCooldown > 0) flowerCooldown--;
+
+        // Miserable effects
+        if (getHappiness() < HAPPINESS_MISERABLE && level() instanceof ServerLevel sl) {
+            if (--smokeParticleTimer <= 0) {
+                smokeParticleTimer = SMOKE_PARTICLE_INTERVAL;
+                sl.sendParticles(ParticleTypes.LARGE_SMOKE,
+                        getX(), getY() + 2.1, getZ(), 2, 0.2, 0.1, 0.2, 0.01);
+            }
+            if (--gruntTimer <= 0) {
+                gruntTimer = GRUNT_INTERVAL;
+                sl.playSound(null, getX(), getY(), getZ(),
+                        SoundEvents.VILLAGER_NO, SoundSource.NEUTRAL,
+                        0.5f, 0.75f + random.nextFloat() * 0.3f);
+            }
+        } else {
+            smokeParticleTimer = SMOKE_PARTICLE_INTERVAL;
+            gruntTimer         = GRUNT_INTERVAL;
+        }
+    }
+
+    /**
      * Searches the worker's 3×3 inventory for any food item and eats the first
      * one found.  Nutrition is read from the item's {@code FOOD} data component
      * so every vanilla food (and any modded food that follows the standard) is
@@ -473,10 +586,32 @@ public class VillagerWorkerEntity extends AbstractVillager {
             if (food == null || food.nutrition() <= 0) continue;
 
             setFoodLevel(getFoodLevel() + food.nutrition());
+
+            // High-saturation food boosts happiness; raw/low-quality food lowers it
+            float sat = food.saturation();
+            if (sat >= 0.8f) {
+                modifyHappiness(10);
+            } else if (sat >= 0.4f) {
+                modifyHappiness(3);
+            } else {
+                modifyHappiness(-5);
+            }
+
             stack.shrink(1);
             workerInventory.setItem(i, stack.isEmpty() ? ItemStack.EMPTY : stack);
             return; // eat one item per check
         }
+    }
+
+    // ── Damage → happiness loss ───────────────────────────────────────────────
+
+    @Override
+    public boolean hurt(DamageSource source, float amount) {
+        boolean hit = super.hurt(source, amount);
+        if (hit && !level().isClientSide()) {
+            modifyHappiness(-8);
+        }
+        return hit;
     }
 
     // ── Employment API ────────────────────────────────────────────────────────
@@ -570,17 +705,38 @@ public class VillagerWorkerEntity extends AbstractVillager {
 
     @Override
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
-        if (!this.isBaby() && !player.isSecondaryUseActive() && this.isAlive()) {
-            if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
-                serverPlayer.openMenu(
-                        new SimpleMenuProvider(
-                                (containerId, playerInv, p) -> new VillagerWorkerMenu(containerId, playerInv, this),
-                                this.getDisplayName()
-                        ),
-                        buf -> buf.writeInt(this.getId())
-                );
+        if (!this.isBaby() && this.isAlive()) {
+            ItemStack held = player.getItemInHand(hand);
+
+            // Flower gift: consume one flower, boost happiness (with cooldown)
+            if (!player.isSecondaryUseActive() && held.is(ItemTags.FLOWERS)) {
+                if (!this.level().isClientSide()) {
+                    if (flowerCooldown <= 0) {
+                        if (!player.getAbilities().instabuild) held.shrink(1);
+                        modifyHappiness(15);
+                        flowerCooldown = FLOWER_COOLDOWN_TICKS;
+                        if (level() instanceof ServerLevel sl) {
+                            sl.sendParticles(ParticleTypes.HAPPY_VILLAGER,
+                                    getX(), getY() + 1.5, getZ(), 6, 0.3, 0.5, 0.3, 0.05);
+                        }
+                    }
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide);
             }
-            return InteractionResult.sidedSuccess(this.level().isClientSide);
+
+            // Default: open worker GUI
+            if (!player.isSecondaryUseActive()) {
+                if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
+                    serverPlayer.openMenu(
+                            new SimpleMenuProvider(
+                                    (containerId, playerInv, p) -> new VillagerWorkerMenu(containerId, playerInv, this),
+                                    this.getDisplayName()
+                            ),
+                            buf -> buf.writeInt(this.getId())
+                    );
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide);
+            }
         }
         return InteractionResult.PASS;
     }
@@ -667,6 +823,12 @@ public class VillagerWorkerEntity extends AbstractVillager {
         tag.putInt("FoodLevel",     getFoodLevel());
         tag.putInt("FoodDrainTimer", foodDrainTimer);
 
+        // Happiness
+        tag.putInt("Happiness",           getHappiness());
+        tag.putInt("HappinessDrainTimer", happinessDrainTimer);
+        tag.putInt("FlowerCooldown",      flowerCooldown);
+        if (lastSocializedWithUUID != null) tag.putUUID("LastSocialized", lastSocializedWithUUID);
+
         // Level / XP
         tag.putInt("WorkerLevel", getLevel());
         tag.putInt("WorkerXp",    getXp());
@@ -738,6 +900,12 @@ public class VillagerWorkerEntity extends AbstractVillager {
         // Food
         setFoodLevel(tag.contains("FoodLevel") ? tag.getInt("FoodLevel") : MAX_FOOD);
         foodDrainTimer = tag.contains("FoodDrainTimer") ? tag.getInt("FoodDrainTimer") : FOOD_DRAIN_INTERVAL;
+
+        // Happiness
+        setHappiness(tag.contains("Happiness") ? tag.getInt("Happiness") : 75);
+        happinessDrainTimer = tag.contains("HappinessDrainTimer") ? tag.getInt("HappinessDrainTimer") : HAPPINESS_DRAIN_INTERVAL;
+        flowerCooldown      = tag.contains("FlowerCooldown")      ? tag.getInt("FlowerCooldown")      : 0;
+        lastSocializedWithUUID = tag.hasUUID("LastSocialized") ? tag.getUUID("LastSocialized") : null;
 
         // Level / XP
         setLevel(tag.contains("WorkerLevel") ? tag.getInt("WorkerLevel") : 0);

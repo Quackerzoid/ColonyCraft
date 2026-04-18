@@ -81,6 +81,7 @@ public class SmelterWorkGoal extends Goal {
         return smelter.getJob() == JobType.SMELTER
                 && smelter.getWorkplacePos() != null
                 && !smelter.isTooHungryToWork()
+                && !smelter.isTooUnhappyToWork()
                 && smelter.level() instanceof ServerLevel;
     }
 

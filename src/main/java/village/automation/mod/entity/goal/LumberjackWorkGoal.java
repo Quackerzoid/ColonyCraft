@@ -113,6 +113,7 @@ public class LumberjackWorkGoal extends Goal {
         if (requestCooldown > 0) requestCooldown--;
         if (!lumberjack.level().isDay())        return false;
         if (lumberjack.isTooHungryToWork())     return false;
+        if (lumberjack.isTooUnhappyToWork())    return false;
         if (scanCooldown > 0) { scanCooldown--; return false; }
         if (!(lumberjack.level() instanceof ServerLevel level)) return false;
         if (lumberjack.getJob() != JobType.LUMBERJACK)          return false;
@@ -149,6 +150,7 @@ public class LumberjackWorkGoal extends Goal {
         if (approachFailed)                                      return false;
         if (!lumberjack.level().isDay())                         return false;
         if (lumberjack.isTooHungryToWork())                      return false;
+        if (lumberjack.isTooUnhappyToWork())                     return false;
         if (!(lumberjack.level() instanceof ServerLevel))        return false;
         if (lumberjack.getJob() != JobType.LUMBERJACK)           return false;
         if (!hasAxeEquipped())                                   return false;

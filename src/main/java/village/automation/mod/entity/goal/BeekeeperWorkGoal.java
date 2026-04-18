@@ -68,6 +68,7 @@ public class BeekeeperWorkGoal extends Goal {
     public boolean canUse() {
         return keeper.getJob() == JobType.BEEKEEPER
                 && !keeper.isTooHungryToWork()
+                && !keeper.isTooUnhappyToWork()
                 && !keeper.level().isClientSide()
                 && findBlockEntity() != null;
     }
@@ -76,6 +77,7 @@ public class BeekeeperWorkGoal extends Goal {
     public boolean canContinueToUse() {
         return keeper.getJob() == JobType.BEEKEEPER
                 && !keeper.isTooHungryToWork()
+                && !keeper.isTooUnhappyToWork()
                 && !keeper.level().isClientSide();
     }
 
