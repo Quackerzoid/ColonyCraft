@@ -41,7 +41,13 @@
       "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/Markings.java)",
       "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/Variant.java)",
       "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java)",
-      "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/AbstractHorse.java)"
+      "Bash(jar -xf \"D:/neoforge mdk mod/build/moddev/artifacts/neoforge-21.1.226-sources.jar\" net/minecraft/world/entity/animal/horse/AbstractHorse.java)",
+      "Bash(grep -i \"\\\\.java$\")",
+      "Bash(where java *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files/Microsoft/**)",
+      "Read(//c/Users/Laurie/.jdks/**)",
+      "Read(//c/Users/Laurie/AppData/Local/Programs/**)"
     ]
   }
 }

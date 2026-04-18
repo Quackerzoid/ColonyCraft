@@ -93,6 +93,7 @@ public class MinerWorkGoal extends Goal {
         if (requestCooldown > 0) requestCooldown--;
         if (!miner.level().isDay()) return false;          // no mining at night
         if (miner.isTooHungryToWork()) return false;       // won't work below 20 % food
+        if (miner.isTooUnhappyToWork()) return false;
         if (scanCooldown > 0) { scanCooldown--; return false; }
 
         if (!(miner.level() instanceof ServerLevel level)) return false;
@@ -128,6 +129,7 @@ public class MinerWorkGoal extends Goal {
     public boolean canContinueToUse() {
         if (!miner.level().isDay()) return false;          // stop at nightfall
         if (miner.isTooHungryToWork()) return false;       // stop if food drops below 20 %
+        if (miner.isTooUnhappyToWork()) return false;
         if (approachFailed)                              return false;
         if (!(miner.level() instanceof ServerLevel))     return false;
         if (miner.getJob() != JobType.MINER)             return false;

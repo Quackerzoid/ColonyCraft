@@ -92,6 +92,7 @@ public class FishermanWorkGoal extends Goal {
     public boolean canUse() {
         if (requestCooldown > 0) requestCooldown--;
         if (fisherman.isTooHungryToWork())               return false;
+        if (fisherman.isTooUnhappyToWork())              return false;
         if (scanCooldown > 0) { scanCooldown--;          return false; }
         if (!(fisherman.level() instanceof ServerLevel level)) return false;
         if (fisherman.getJob() != JobType.FISHERMAN)     return false;
@@ -125,6 +126,7 @@ public class FishermanWorkGoal extends Goal {
     public boolean canContinueToUse() {
         if (approachFailed)                                       return false;
         if (fisherman.isTooHungryToWork())                        return false;
+        if (fisherman.isTooUnhappyToWork())                       return false;
         if (!(fisherman.level() instanceof ServerLevel))          return false;
         if (fisherman.getJob() != JobType.FISHERMAN)              return false;
         if (!hasFishingRod())                                     return false;

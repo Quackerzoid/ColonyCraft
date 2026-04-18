@@ -60,6 +60,7 @@ public class SmithCraftGoal extends Goal {
         return smith.getJob() == JobType.BLACKSMITH
                 && smith.getWorkplacePos() != null
                 && !smith.isTooHungryToWork()
+                && !smith.isTooUnhappyToWork()
                 && smith.level() instanceof ServerLevel;
     }
 
