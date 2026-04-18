@@ -362,6 +362,11 @@ public class VillagerWorkerEntity extends AbstractVillager {
         return levelScaledTicks(1200, 100);
     }
 
+    /** Ticks per tree chop for the lumberjack (60 s → 5 s over levels 1–20). */
+    public int getLumberjackChopTicks() {
+        return levelScaledTicks(1200, 100);
+    }
+
     /**
      * Chance (0.0–0.2) that the farmer accidentally destroys farmland while harvesting.
      * Linear: 20 % at level 0, 0 % at level 20.
