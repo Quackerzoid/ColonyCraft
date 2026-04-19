@@ -75,8 +75,14 @@ public class SoulIronGolemEntity extends IronGolem {
     /** Client-readable; true while the repair animation should play. */
     public boolean isRepairing()            { return entityData.get(DATA_REPAIRING); }
     /** True if this golem has been converted into a Bell Guardian. */
-    public boolean isBellGolem()            { return entityData.get(DATA_IS_BELL_GOLEM); }
-    public void    setBellGolem(boolean v)  { entityData.set(DATA_IS_BELL_GOLEM, v); }
+    public boolean isBellGolem()           { return entityData.get(DATA_IS_BELL_GOLEM); }
+    public void    setBellGolem(boolean v) {
+        entityData.set(DATA_IS_BELL_GOLEM, v);
+        if (v && !level().isClientSide()) {
+            setCustomName(net.minecraft.network.chat.Component.literal("Bell Guardian"));
+            setCustomNameVisible(true);
+        }
+    }
 
     // ── Server-side repair state ──────────────────────────────────────────────
 
@@ -206,7 +212,8 @@ public class SoulIronGolemEntity extends IronGolem {
         }
 
         // ── Territory restriction ────────────────────────────────────────────
-        if (linkedHeartPos != null) {
+        // Skip when the bell goal has set a tighter restriction around the bell.
+        if (linkedHeartPos != null && activeBellPos == null) {
             BlockEntity be = this.level().getBlockEntity(linkedHeartPos);
             if (be instanceof VillageHeartBlockEntity heart) {
                 this.restrictTo(linkedHeartPos, heart.getRadius());
@@ -250,8 +257,8 @@ public class SoulIronGolemEntity extends IronGolem {
             newStatus = "Attacking: " + target.getType().getDescription().getString();
         } else if (repairingState) {
             newStatus = "Repairing";
-        } else if (isBellGolem()) {
-            newStatus = activeBellPos != null ? "Alerting!" : "Bell Guardian";
+        } else if (activeBellPos != null) {
+            newStatus = "Bell Guarding";
         } else {
             newStatus = "Patrolling";
         }
@@ -446,20 +453,15 @@ public class SoulIronGolemEntity extends IronGolem {
 
         private boolean anyGolemInCombat() {
             Level lvl = SoulIronGolemEntity.this.level();
-            if (!(lvl instanceof ServerLevel sl)) return false;
+            if (!(lvl instanceof ServerLevel sl) || linkedHeartPos == null) return false;
+            // Spatial scan — works for all golems in the village regardless of UUID registration.
+            // Includes the bell golem itself (if it's the one being attacked, it should ring too).
             BlockEntity be = sl.getBlockEntity(linkedHeartPos);
-            if (!(be instanceof VillageHeartBlockEntity heart)) return false;
-            for (UUID uuid : heart.getGolemUUIDs()) {
-                Entity e = sl.getEntity(uuid);
-                if (e instanceof SoulIronGolemEntity g
-                        && g != SoulIronGolemEntity.this
-                        && g.isAlive()
-                        && g.getTarget() != null
-                        && g.getTarget().isAlive()) {
-                    return true;
-                }
-            }
-            return false;
+            int radius = be instanceof VillageHeartBlockEntity heart ? heart.getRadius() : 64;
+            net.minecraft.world.phys.AABB box =
+                    new net.minecraft.world.phys.AABB(linkedHeartPos).inflate(radius, 32, radius);
+            return !sl.getEntitiesOfClass(SoulIronGolemEntity.class, box,
+                    g -> g.isAlive() && g.getTarget() != null && g.getTarget().isAlive()).isEmpty();
         }
     }
 
