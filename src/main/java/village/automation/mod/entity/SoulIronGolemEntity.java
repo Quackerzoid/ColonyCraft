@@ -76,13 +76,7 @@ public class SoulIronGolemEntity extends IronGolem {
     public boolean isRepairing()            { return entityData.get(DATA_REPAIRING); }
     /** True if this golem has been converted into a Bell Guardian. */
     public boolean isBellGolem()           { return entityData.get(DATA_IS_BELL_GOLEM); }
-    public void    setBellGolem(boolean v) {
-        entityData.set(DATA_IS_BELL_GOLEM, v);
-        if (v && !level().isClientSide()) {
-            setCustomName(net.minecraft.network.chat.Component.literal("Bell Guardian"));
-            setCustomNameVisible(true);
-        }
-    }
+    public void    setBellGolem(boolean v) { entityData.set(DATA_IS_BELL_GOLEM, v); }
 
     // ── Server-side repair state ──────────────────────────────────────────────
 
@@ -130,9 +124,6 @@ public class SoulIronGolemEntity extends IronGolem {
         // RepairGoal (priority 4): runs when repairing and no combat target;
         // higher-priority attack goals (2, 3) naturally interrupt it when a target appears.
         this.goalSelector.addGoal(4, new RepairGoal());
-        // BellGolemCombatGoal (priority 5): only active on Bell Guardians — navigates to the
-        // nearest bell and rings it whenever another golem in the village is in combat.
-        this.goalSelector.addGoal(5, new BellGolemCombatGoal());
         this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 0.6, 0.0f));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
@@ -263,6 +254,9 @@ public class SoulIronGolemEntity extends IronGolem {
             newStatus = "Patrolling";
         }
         if (!newStatus.equals(getStatus())) setStatus(newStatus);
+
+        // ── Bell Guardian behaviour ───────────────────────────────────────────
+        if (isBellGolem()) tickBellGuardian(inCombat);
     }
 
     // ── Particles (client only) ───────────────────────────────────────────────
@@ -334,135 +328,104 @@ public class SoulIronGolemEntity extends IronGolem {
         }
     }
 
-    // ── Inner goal: Bell Guardian ─────────────────────────────────────────────
+    // ── Bell Guardian behaviour (runs from tick, not a Goal) ─────────────────
+
+    private static final int BELL_RING_INTERVAL = 400;  // 20 s between rings
+    private static final int BELL_ARRIVE_DIST_SQ = 16;  // 4 blocks to count as "at bell"
 
     /**
-     * Active only on Bell Guardian golems ({@link #isBellGolem()} == true).
-     *
-     * <p>When any other soul iron golem linked to the same heart enters combat this
-     * goal activates: the bell guardian finds the nearest {@link Blocks#BELL} within
-     * the village radius, walks to it, rings it, then fights within 10 blocks of the
-     * bell.  The bell is re-rung every 20 seconds as long as combat continues.
-     *
-     * <p>Bell position is stored on the entity ({@link #activeBellPos}) so it
-     * survives goal preemption by {@link MeleeAttackGoal} and {@link RepairGoal}.
+     * Called every server tick when this golem is a Bell Guardian.
+     * Finds the nearest bell block, walks to it when any golem in the village is
+     * in combat, rings it on arrival and every 20 s, then fights within 10 blocks.
+     * Runs AFTER super.tick() so our moveTo() call comes last and is not overwritten
+     * by WaterAvoidingRandomStrollGoal within the same tick.
      */
-    private class BellGolemCombatGoal extends Goal {
+    private void tickBellGuardian(boolean selfInCombat) {
+        boolean combatDetected = selfInCombat || anyGolemInCombat();
 
-        private static final int RING_INTERVAL  = 400;  // 20 s between rings
-        private static final int ARRIVE_DIST_SQ = 16;   // 4 blocks
-
-        BellGolemCombatGoal() {
-            setFlags(EnumSet.of(Flag.MOVE));
-        }
-
-        @Override
-        public boolean canUse() {
-            return isBellGolem()
-                    && linkedHeartPos != null
-                    && !level().isClientSide()
-                    && anyGolemInCombat();
-        }
-
-        @Override
-        public boolean canContinueToUse() {
-            if (!isBellGolem() || linkedHeartPos == null || level().isClientSide()) return false;
-            if (anyGolemInCombat()) return true;
-            // Continue for 30 s after last ring so the golem rings once as combat ends
-            return activeBellPos != null
-                    && (SoulIronGolemEntity.this.tickCount - lastBellRingTick) < 600;
-        }
-
-        @Override
-        public void start() {
-            if (activeBellPos == null) {
-                activeBellPos = findNearestBell();
-            }
-            if (activeBellPos != null) {
-                SoulIronGolemEntity.this.getNavigation().moveTo(
-                        activeBellPos.getX() + 0.5, activeBellPos.getY(),
-                        activeBellPos.getZ() + 0.5, 1.0);
-            }
-        }
-
-        @Override
-        public void stop() {
-            // Preserve activeBellPos while other golems are still fighting (goal may be
-            // preempted by MeleeAttack or RepairGoal while combat is ongoing).
-            if (!anyGolemInCombat()) {
+        if (!combatDetected) {
+            // Combat is over — wait 30 s after last ring then return to normal patrol
+            if (activeBellPos != null && (this.tickCount - lastBellRingTick) > 600) {
                 activeBellPos = null;
                 lastBellRingTick = Integer.MIN_VALUE / 2;
-                // Restore territory restriction to the full heart radius
                 if (linkedHeartPos != null) {
-                    BlockEntity be = SoulIronGolemEntity.this.level().getBlockEntity(linkedHeartPos);
+                    BlockEntity be = this.level().getBlockEntity(linkedHeartPos);
                     if (be instanceof VillageHeartBlockEntity heart) {
-                        SoulIronGolemEntity.this.restrictTo(linkedHeartPos, heart.getRadius());
+                        this.restrictTo(linkedHeartPos, heart.getRadius());
                     }
                 }
             }
+            return;
         }
 
-        @Override
-        public void tick() {
+        // Combat detected — find the bell if not already known
+        if (activeBellPos == null) {
+            activeBellPos = findNearestBell();
             if (activeBellPos == null) return;
+        }
 
-            double distSq = SoulIronGolemEntity.this.distanceToSqr(
-                    activeBellPos.getX() + 0.5, activeBellPos.getY(),
-                    activeBellPos.getZ() + 0.5);
+        double distSq = this.distanceToSqr(
+                activeBellPos.getX() + 0.5, activeBellPos.getY(), activeBellPos.getZ() + 0.5);
 
-            if (distSq > ARRIVE_DIST_SQ) {
-                if (SoulIronGolemEntity.this.getNavigation().isDone()) {
-                    SoulIronGolemEntity.this.getNavigation().moveTo(
-                            activeBellPos.getX() + 0.5, activeBellPos.getY(),
-                            activeBellPos.getZ() + 0.5, 1.0);
-                }
-            } else {
-                // Arrived — restrict combat territory to 10 blocks around the bell
-                SoulIronGolemEntity.this.restrictTo(activeBellPos, 10);
-                // Ring on arrival and every RING_INTERVAL thereafter
-                if ((SoulIronGolemEntity.this.tickCount - lastBellRingTick) >= RING_INTERVAL) {
-                    ringBell();
-                    lastBellRingTick = SoulIronGolemEntity.this.tickCount;
-                }
+        if (distSq > BELL_ARRIVE_DIST_SQ) {
+            // Navigate toward bell — only when not personally fighting and not already on the way.
+            // We call moveTo() here (after super.tick()) so it overwrites any stroll path.
+            if (!selfInCombat && !isNavigatingTo(activeBellPos)) {
+                this.getNavigation().moveTo(
+                        activeBellPos.getX() + 0.5, activeBellPos.getY(),
+                        activeBellPos.getZ() + 0.5, 1.0);
+            }
+        } else {
+            // At the bell: restrict combat zone and ring periodically
+            this.restrictTo(activeBellPos, 10);
+            if ((this.tickCount - lastBellRingTick) >= BELL_RING_INTERVAL) {
+                ringBell();
+                lastBellRingTick = this.tickCount;
             }
         }
+    }
 
-        private void ringBell() {
-            if (activeBellPos == null) return;
-            BlockState bs = SoulIronGolemEntity.this.level().getBlockState(activeBellPos);
-            if (bs.is(Blocks.BELL) && bs.getBlock() instanceof BellBlock bb) {
-                bb.attemptToRing(SoulIronGolemEntity.this,
-                        SoulIronGolemEntity.this.level(), activeBellPos, null);
-            }
-        }
+    /** Returns true if the current navigation path is already heading to {@code target}. */
+    private boolean isNavigatingTo(BlockPos target) {
+        net.minecraft.world.level.pathfinder.Path path = this.getNavigation().getPath();
+        if (path == null) return false;
+        BlockPos dest = path.getTarget();
+        return dest != null && dest.closerThan(target, 2.0);
+    }
 
-        @Nullable
-        private BlockPos findNearestBell() {
-            if (!(SoulIronGolemEntity.this.level() instanceof ServerLevel)) return null;
-            BlockEntity hbe = SoulIronGolemEntity.this.level().getBlockEntity(linkedHeartPos);
-            if (!(hbe instanceof VillageHeartBlockEntity heart)) return null;
-            int r = Math.min(heart.getRadius(), 64);
-            BlockPos origin = SoulIronGolemEntity.this.blockPosition();
-            return BlockPos.betweenClosedStream(
-                            origin.offset(-r, -8, -r), origin.offset(r, 8, r))
-                    .filter(p -> SoulIronGolemEntity.this.level().getBlockState(p).is(Blocks.BELL))
-                    .min(Comparator.comparingDouble(p -> p.distSqr(origin)))
-                    .map(BlockPos::immutable)
-                    .orElse(null);
+    private void ringBell() {
+        if (activeBellPos == null) return;
+        BlockState bs = this.level().getBlockState(activeBellPos);
+        if (bs.is(Blocks.BELL) && bs.getBlock() instanceof BellBlock bb) {
+            bb.attemptToRing(this, this.level(), activeBellPos, null);
         }
+    }
 
-        private boolean anyGolemInCombat() {
-            Level lvl = SoulIronGolemEntity.this.level();
-            if (!(lvl instanceof ServerLevel sl) || linkedHeartPos == null) return false;
-            // Spatial scan — works for all golems in the village regardless of UUID registration.
-            // Includes the bell golem itself (if it's the one being attacked, it should ring too).
-            BlockEntity be = sl.getBlockEntity(linkedHeartPos);
-            int radius = be instanceof VillageHeartBlockEntity heart ? heart.getRadius() : 64;
-            net.minecraft.world.phys.AABB box =
-                    new net.minecraft.world.phys.AABB(linkedHeartPos).inflate(radius, 32, radius);
-            return !sl.getEntitiesOfClass(SoulIronGolemEntity.class, box,
-                    g -> g.isAlive() && g.getTarget() != null && g.getTarget().isAlive()).isEmpty();
-        }
+    @Nullable
+    private BlockPos findNearestBell() {
+        if (!(this.level() instanceof ServerLevel)) return null;
+        BlockEntity hbe = this.level().getBlockEntity(linkedHeartPos);
+        if (!(hbe instanceof VillageHeartBlockEntity heart)) return null;
+        int r = Math.min(heart.getRadius(), 64);
+        BlockPos origin = this.blockPosition();
+        return BlockPos.betweenClosedStream(origin.offset(-r, -8, -r), origin.offset(r, 8, r))
+                .filter(p -> this.level().getBlockState(p).is(Blocks.BELL))
+                .min(Comparator.comparingDouble(p -> p.distSqr(origin)))
+                .map(BlockPos::immutable)
+                .orElse(null);
+    }
+
+    /** Spatial scan: true if any SoulIronGolemEntity within the village radius has the
+     *  "Attacking" status — more reliable than checking getTarget() across entity refs. */
+    private boolean anyGolemInCombat() {
+        if (!(this.level() instanceof ServerLevel sl) || linkedHeartPos == null) return false;
+        BlockEntity be = sl.getBlockEntity(linkedHeartPos);
+        int r = be instanceof VillageHeartBlockEntity heart ? heart.getRadius() : 64;
+        net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(
+                linkedHeartPos.getX() - r, linkedHeartPos.getY() - 32, linkedHeartPos.getZ() - r,
+                linkedHeartPos.getX() + r, linkedHeartPos.getY() + 32, linkedHeartPos.getZ() + r);
+        return !sl.getEntitiesOfClass(SoulIronGolemEntity.class, box,
+                g -> g.isAlive() && g.getStatus().startsWith("Attacking")).isEmpty();
     }
 
     // ── Inner goal: Repairing ─────────────────────────────────────────────────
