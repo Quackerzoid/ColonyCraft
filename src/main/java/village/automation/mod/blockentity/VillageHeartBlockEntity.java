@@ -89,6 +89,9 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     // UUIDs of courier golems linked to this heart (server-side only)
     private final Set<UUID> courierUUIDs = new HashSet<>();
 
+    // UUIDs of soul iron golems linked to this heart (server-side only)
+    private final Set<UUID> golemUUIDs = new HashSet<>();
+
     // Shared task-coordination layer — prevents multiple couriers from duplicating work.
     // Transient: not persisted to NBT; resets cleanly on server restart.
     private final CourierDispatcher courierDispatcher = new CourierDispatcher();
@@ -178,6 +181,7 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
 
         // ── Worker count + cap sync ──────────────────────────────────────────
         be.cleanDeadCouriers(serverLevel);
+        be.cleanDeadGolems(serverLevel);
         int liveCount = be.countLiveWorkers(serverLevel);
         int cap       = be.getWorkerCap();
         be.syncedWorkerCount = liveCount;
@@ -285,6 +289,22 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
     /** Returns the task dispatcher shared by all couriers linked to this heart. */
     public CourierDispatcher getCourierDispatcher() {
         return courierDispatcher;
+    }
+
+    /** Registers a soul iron golem as belonging to this heart's colony. */
+    public void registerGolem(UUID uuid) {
+        golemUUIDs.add(uuid);
+        setChanged();
+    }
+
+    public Set<UUID> getGolemUUIDs() { return java.util.Collections.unmodifiableSet(golemUUIDs); }
+
+    /** Removes dead/unloaded soul iron golem UUIDs. */
+    private void cleanDeadGolems(ServerLevel serverLevel) {
+        golemUUIDs.removeIf(uuid -> {
+            var entity = serverLevel.getEntity(uuid);
+            return entity == null || !entity.isAlive();
+        });
     }
 
     /** Removes dead/unloaded courier UUIDs and releases their dispatcher locks. */
@@ -944,6 +964,15 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         }
         tag.put("CourierUUIDs", courierList);
 
+        // Soul Iron Golem UUIDs
+        ListTag golemList = new ListTag();
+        for (UUID uuid : this.golemUUIDs) {
+            CompoundTag t = new CompoundTag();
+            t.putUUID("UUID", uuid);
+            golemList.add(t);
+        }
+        tag.put("GolemUUIDs", golemList);
+
         // Linked workplace positions (all profession blocks)
         ListTag workplaceList = new ListTag();
         for (BlockPos workPos : this.linkedWorkplaces) {
@@ -1032,6 +1061,12 @@ public class VillageHeartBlockEntity extends BlockEntity implements MenuProvider
         ListTag courierList = tag.getList("CourierUUIDs", Tag.TAG_COMPOUND);
         for (int i = 0; i < courierList.size(); i++) {
             this.courierUUIDs.add(courierList.getCompound(i).getUUID("UUID"));
+        }
+
+        this.golemUUIDs.clear();
+        ListTag golemList = tag.getList("GolemUUIDs", Tag.TAG_COMPOUND);
+        for (int i = 0; i < golemList.size(); i++) {
+            this.golemUUIDs.add(golemList.getCompound(i).getUUID("UUID"));
         }
 
         this.linkedWorkplaces.clear();

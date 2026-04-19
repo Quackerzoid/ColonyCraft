@@ -56,6 +56,8 @@ public class SoulIronGolemModel<T extends SoulIronGolemEntity> extends IronGolem
         this.leftArm  = root.getChild("left_arm");
     }
 
+    public ModelPart getHead() { return head; }
+
     @Override
     public void setupAnim(T entity, float limbSwing, float limbSwingAmount,
                           float ageInTicks, float netHeadYaw, float headPitch) {

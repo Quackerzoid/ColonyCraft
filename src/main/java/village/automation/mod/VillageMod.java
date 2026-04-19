@@ -418,6 +418,8 @@ public class VillageMod {
             MENU_TYPES.register("soul_iron_golem_menu",
                     () -> IMenuTypeExtension.create(village.automation.mod.menu.SoulIronGolemMenu::new));
 
+    public static final DeferredItem<Item> SOUL_BELL = ITEMS.registerSimpleItem("soul_bell");
+
     // Pale soul-white base (#E8E8FF) with soul-blue highlight (#4040C0)
     public static final DeferredItem<SpawnEggItem> VILLAGER_SOUL_SPAWN_EGG =
             ITEMS.register("villager_soul_spawn_egg",
@@ -460,6 +462,7 @@ public class VillageMod {
                         output.accept(VILLAGE_UPGRADE.get());
                         output.accept(VILLAGE_UPGRADE_II.get());
                         output.accept(VILLAGE_UPGRADE_III.get());
+                        output.accept(SOUL_BELL.get());
                         output.accept(SOUL_PUMPKIN_ITEM.get());
                         output.accept(VILLAGER_SOUL_SPAWN_EGG.get());
                         output.accept(VILLAGER_WORKER_SPAWN_EGG.get());
@@ -714,6 +717,11 @@ public class VillageMod {
                 BlockPos heartPos = heartPosOpt.get();
                 golem.linkToHeart(heartPos);
                 serverLevel.addFreshEntity(golem);
+                net.minecraft.world.level.block.entity.BlockEntity golemHeartBe =
+                        serverLevel.getBlockEntity(heartPos);
+                if (golemHeartBe instanceof VillageHeartBlockEntity golemHeartBE) {
+                    golemHeartBE.registerGolem(golem.getUUID());
+                }
                 event.setCanceled(true);
             }
         }
