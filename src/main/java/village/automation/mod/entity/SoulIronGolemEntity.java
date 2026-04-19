@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -31,13 +32,19 @@ import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.BellBlock;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import village.automation.mod.VillageMod;
 import village.automation.mod.blockentity.VillageHeartBlockEntity;
 import village.automation.mod.entity.goal.OpenNearbyDoorsGoal;
 import village.automation.mod.menu.SoulIronGolemMenu;
 
 import javax.annotation.Nullable;
+import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.UUID;
 
 public class SoulIronGolemEntity extends IronGolem {
 
@@ -51,17 +58,25 @@ public class SoulIronGolemEntity extends IronGolem {
     private static final EntityDataAccessor<Boolean> DATA_REPAIRING =
             SynchedEntityData.defineId(SoulIronGolemEntity.class, EntityDataSerializers.BOOLEAN);
 
+    /** Whether this golem has been transformed into a Bell Guardian. */
+    private static final EntityDataAccessor<Boolean> DATA_IS_BELL_GOLEM =
+            SynchedEntityData.defineId(SoulIronGolemEntity.class, EntityDataSerializers.BOOLEAN);
+
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(DATA_STATUS,    "Patrolling");
-        builder.define(DATA_REPAIRING, false);
+        builder.define(DATA_STATUS,       "Patrolling");
+        builder.define(DATA_REPAIRING,    false);
+        builder.define(DATA_IS_BELL_GOLEM, false);
     }
 
     public String  getStatus()              { return entityData.get(DATA_STATUS);    }
     public void    setStatus(String status) { entityData.set(DATA_STATUS, status);   }
     /** Client-readable; true while the repair animation should play. */
     public boolean isRepairing()            { return entityData.get(DATA_REPAIRING); }
+    /** True if this golem has been converted into a Bell Guardian. */
+    public boolean isBellGolem()            { return entityData.get(DATA_IS_BELL_GOLEM); }
+    public void    setBellGolem(boolean v)  { entityData.set(DATA_IS_BELL_GOLEM, v); }
 
     // ── Server-side repair state ──────────────────────────────────────────────
 
@@ -77,6 +92,10 @@ public class SoulIronGolemEntity extends IronGolem {
     // ── Heart link ────────────────────────────────────────────────────────────
 
     @Nullable private BlockPos linkedHeartPos;
+
+    // Bell guardian state — stored on entity so the goal can persist across preemptions
+    @Nullable BlockPos activeBellPos = null;
+    int lastBellRingTick = Integer.MIN_VALUE / 2;
 
     // ── Constructor / attributes ──────────────────────────────────────────────
 
@@ -105,6 +124,9 @@ public class SoulIronGolemEntity extends IronGolem {
         // RepairGoal (priority 4): runs when repairing and no combat target;
         // higher-priority attack goals (2, 3) naturally interrupt it when a target appears.
         this.goalSelector.addGoal(4, new RepairGoal());
+        // BellGolemCombatGoal (priority 5): only active on Bell Guardians — navigates to the
+        // nearest bell and rings it whenever another golem in the village is in combat.
+        this.goalSelector.addGoal(5, new BellGolemCombatGoal());
         this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 0.6, 0.0f));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 6.0f));
         this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
@@ -126,6 +148,21 @@ public class SoulIronGolemEntity extends IronGolem {
         // Crouch + iron ingot in hand → repair the golem without opening the UI
         if (player.isShiftKeyDown()) {
             ItemStack held = player.getItemInHand(hand);
+            // Shift + Soul Bell → transform into Bell Guardian (one-time, consumes bell)
+            if (held.is(VillageMod.SOUL_BELL.get())) {
+                if (!this.level().isClientSide()) {
+                    if (!isBellGolem()) {
+                        setBellGolem(true);
+                        if (!player.getAbilities().instabuild) held.shrink(1);
+                        this.level().playSound(null,
+                                this.getX(), this.getY(), this.getZ(),
+                                net.minecraft.sounds.SoundEvents.BELL_BLOCK,
+                                this.getSoundSource(), 1.0f, 1.0f);
+                        return InteractionResult.CONSUME;
+                    }
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide());
+            }
             if (held.is(net.minecraft.world.item.Items.IRON_INGOT)) {
                 if (!this.level().isClientSide()) {
                     float missing = this.getMaxHealth() - this.getHealth();
@@ -213,6 +250,8 @@ public class SoulIronGolemEntity extends IronGolem {
             newStatus = "Attacking: " + target.getType().getDescription().getString();
         } else if (repairingState) {
             newStatus = "Repairing";
+        } else if (isBellGolem()) {
+            newStatus = activeBellPos != null ? "Alerting!" : "Bell Guardian";
         } else {
             newStatus = "Patrolling";
         }
@@ -270,6 +309,7 @@ public class SoulIronGolemEntity extends IronGolem {
             tag.putInt("HeartY", linkedHeartPos.getY());
             tag.putInt("HeartZ", linkedHeartPos.getZ());
         }
+        tag.putBoolean("IsBellGolem", isBellGolem());
     }
 
     @Override
@@ -278,6 +318,145 @@ public class SoulIronGolemEntity extends IronGolem {
         if (tag.contains("HeartX") && tag.contains("HeartY") && tag.contains("HeartZ")) {
             linkedHeartPos = new BlockPos(
                     tag.getInt("HeartX"), tag.getInt("HeartY"), tag.getInt("HeartZ"));
+        }
+        if (tag.contains("IsBellGolem")) {
+            setBellGolem(tag.getBoolean("IsBellGolem"));
+        }
+    }
+
+    // ── Inner goal: Bell Guardian ─────────────────────────────────────────────
+
+    /**
+     * Active only on Bell Guardian golems ({@link #isBellGolem()} == true).
+     *
+     * <p>When any other soul iron golem linked to the same heart enters combat this
+     * goal activates: the bell guardian finds the nearest {@link Blocks#BELL} within
+     * the village radius, walks to it, rings it, then fights within 10 blocks of the
+     * bell.  The bell is re-rung every 20 seconds as long as combat continues.
+     *
+     * <p>Bell position is stored on the entity ({@link #activeBellPos}) so it
+     * survives goal preemption by {@link MeleeAttackGoal} and {@link RepairGoal}.
+     */
+    private class BellGolemCombatGoal extends Goal {
+
+        private static final int RING_INTERVAL  = 400;  // 20 s between rings
+        private static final int ARRIVE_DIST_SQ = 16;   // 4 blocks
+
+        BellGolemCombatGoal() {
+            setFlags(EnumSet.of(Flag.MOVE));
+        }
+
+        @Override
+        public boolean canUse() {
+            return isBellGolem()
+                    && linkedHeartPos != null
+                    && !level().isClientSide()
+                    && anyGolemInCombat();
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            if (!isBellGolem() || linkedHeartPos == null || level().isClientSide()) return false;
+            if (anyGolemInCombat()) return true;
+            // Continue for 30 s after last ring so the golem rings once as combat ends
+            return activeBellPos != null
+                    && (SoulIronGolemEntity.this.tickCount - lastBellRingTick) < 600;
+        }
+
+        @Override
+        public void start() {
+            if (activeBellPos == null) {
+                activeBellPos = findNearestBell();
+            }
+            if (activeBellPos != null) {
+                SoulIronGolemEntity.this.getNavigation().moveTo(
+                        activeBellPos.getX() + 0.5, activeBellPos.getY(),
+                        activeBellPos.getZ() + 0.5, 1.0);
+            }
+        }
+
+        @Override
+        public void stop() {
+            // Preserve activeBellPos while other golems are still fighting (goal may be
+            // preempted by MeleeAttack or RepairGoal while combat is ongoing).
+            if (!anyGolemInCombat()) {
+                activeBellPos = null;
+                lastBellRingTick = Integer.MIN_VALUE / 2;
+                // Restore territory restriction to the full heart radius
+                if (linkedHeartPos != null) {
+                    BlockEntity be = SoulIronGolemEntity.this.level().getBlockEntity(linkedHeartPos);
+                    if (be instanceof VillageHeartBlockEntity heart) {
+                        SoulIronGolemEntity.this.restrictTo(linkedHeartPos, heart.getRadius());
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void tick() {
+            if (activeBellPos == null) return;
+
+            double distSq = SoulIronGolemEntity.this.distanceToSqr(
+                    activeBellPos.getX() + 0.5, activeBellPos.getY(),
+                    activeBellPos.getZ() + 0.5);
+
+            if (distSq > ARRIVE_DIST_SQ) {
+                if (SoulIronGolemEntity.this.getNavigation().isDone()) {
+                    SoulIronGolemEntity.this.getNavigation().moveTo(
+                            activeBellPos.getX() + 0.5, activeBellPos.getY(),
+                            activeBellPos.getZ() + 0.5, 1.0);
+                }
+            } else {
+                // Arrived — restrict combat territory to 10 blocks around the bell
+                SoulIronGolemEntity.this.restrictTo(activeBellPos, 10);
+                // Ring on arrival and every RING_INTERVAL thereafter
+                if ((SoulIronGolemEntity.this.tickCount - lastBellRingTick) >= RING_INTERVAL) {
+                    ringBell();
+                    lastBellRingTick = SoulIronGolemEntity.this.tickCount;
+                }
+            }
+        }
+
+        private void ringBell() {
+            if (activeBellPos == null) return;
+            BlockState bs = SoulIronGolemEntity.this.level().getBlockState(activeBellPos);
+            if (bs.is(Blocks.BELL) && bs.getBlock() instanceof BellBlock bb) {
+                bb.attemptToRing(SoulIronGolemEntity.this,
+                        SoulIronGolemEntity.this.level(), activeBellPos, null);
+            }
+        }
+
+        @Nullable
+        private BlockPos findNearestBell() {
+            if (!(SoulIronGolemEntity.this.level() instanceof ServerLevel)) return null;
+            BlockEntity hbe = SoulIronGolemEntity.this.level().getBlockEntity(linkedHeartPos);
+            if (!(hbe instanceof VillageHeartBlockEntity heart)) return null;
+            int r = Math.min(heart.getRadius(), 64);
+            BlockPos origin = SoulIronGolemEntity.this.blockPosition();
+            return BlockPos.betweenClosedStream(
+                            origin.offset(-r, -8, -r), origin.offset(r, 8, r))
+                    .filter(p -> SoulIronGolemEntity.this.level().getBlockState(p).is(Blocks.BELL))
+                    .min(Comparator.comparingDouble(p -> p.distSqr(origin)))
+                    .map(BlockPos::immutable)
+                    .orElse(null);
+        }
+
+        private boolean anyGolemInCombat() {
+            Level lvl = SoulIronGolemEntity.this.level();
+            if (!(lvl instanceof ServerLevel sl)) return false;
+            BlockEntity be = sl.getBlockEntity(linkedHeartPos);
+            if (!(be instanceof VillageHeartBlockEntity heart)) return false;
+            for (UUID uuid : heart.getGolemUUIDs()) {
+                Entity e = sl.getEntity(uuid);
+                if (e instanceof SoulIronGolemEntity g
+                        && g != SoulIronGolemEntity.this
+                        && g.isAlive()
+                        && g.getTarget() != null
+                        && g.getTarget().isAlive()) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

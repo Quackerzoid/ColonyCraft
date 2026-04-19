@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 import village.automation.mod.VillageMod;
+import village.automation.mod.client.renderer.layer.BellGolemLayer;
 import village.automation.mod.entity.SoulIronGolemEntity;
 
 public class SoulIronGolemRenderer
@@ -27,6 +28,7 @@ public class SoulIronGolemRenderer
         // SoulIronGolemModel reuses the vanilla IRON_GOLEM layer definition
         // but overrides setupAnim() to add the repair slump animation.
         super(ctx, new SoulIronGolemModel<>(ctx.bakeLayer(ModelLayers.IRON_GOLEM)), 0.7f);
+        this.addLayer(new BellGolemLayer(this));
     }
 
     @Override

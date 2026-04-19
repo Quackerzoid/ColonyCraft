@@ -165,6 +165,12 @@ public class VillageHeartMenu extends AbstractContainerMenu {
                     ? c.getCustomName().getString() : "Courier";
             out.add(new SyncGolemsPacket.GolemInfo(name, "Active"));
         }
+        for (UUID uuid : blockEntity.getGolemUUIDs()) {
+            Entity e = level.getEntity(uuid);
+            if (!(e instanceof village.automation.mod.entity.SoulIronGolemEntity g) || !g.isAlive()) continue;
+            String name = g.isBellGolem() ? "Bell Guardian" : "Soul Iron Golem";
+            out.add(new SyncGolemsPacket.GolemInfo(name, g.getStatus()));
+        }
         return out;
     }
 
